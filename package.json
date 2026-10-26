@@ -1,0 +1,74 @@
+{
+  "name": "granja-farm-manager",
+  "productName": "Granja Farm Manager",
+  "version": "1.0.0",
+  "description": "Gestor de granjas de teléfonos Android con automatizaciones por nodos (ADB USB, OTG directo y Wi-Fi)",
+  "main": "src/main/main.js",
+  "type": "module",
+  "author": "alanreyes9",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder --win",
+    "dist:dir": "electron-builder --win --dir"
+  },
+  "dependencies": {
+    "@yume-chan/adb": "^2.6.4",
+    "@yume-chan/adb-daemon-webusb": "^2.3.2",
+    "@yume-chan/android-bin": "^2.1.0",
+    "@yume-chan/stream-extra": "^2.6.1",
+    "drawflow": "^0.0.60",
+    "usb": "^2.16.0"
+  },
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.granja.farmmanager",
+    "productName": "Granja Farm Manager",
+    "copyright": "Copyright © 2026 alanreyes9",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/usb/**"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Granja Farm Manager",
+      "artifactName": "GranjaFarmManager-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "GranjaFarmManager-Portable-${version}.${ext}"
+    }
+  }
+}

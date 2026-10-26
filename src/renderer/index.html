@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>Granja Farm Manager</title>
+  <link rel="stylesheet" href="../../node_modules/drawflow/dist/drawflow.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="../../node_modules/drawflow/dist/drawflow.min.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">🌱</span><div><b>Granja</b><small>Farm Manager</small></div></div>
+    <nav>
+      <button data-view="devices" class="active">📱 <span>Dispositivos</span></button>
+      <button data-view="editor">🧩 <span>Automatización</span></button>
+      <button data-view="runs">▶️ <span>Ejecuciones</span></button>
+      <button data-view="schedules">⏰ <span>Programador</span></button>
+      <button data-view="data">📊 <span>Datos</span></button>
+      <button data-view="settings">⚙️ <span>Ajustes</span></button>
+    </nav>
+    <div class="side-status" id="sideStatus"></div>
+  </aside>
+
+  <main>
+    <!-- ================= DISPOSITIVOS ================= -->
+    <section id="view-devices" class="view active">
+      <header class="toolbar">
+        <div class="group">
+          <input id="devSearch" placeholder="Buscar nombre, serie, grupo…" />
+          <select id="devGroupFilter"><option value="">Todos los grupos</option></select>
+          <button id="btnSelectAll" class="ghost">Seleccionar todo</button>
+          <button id="btnSelectNone" class="ghost">Ninguno</button>
+          <span class="count" id="selCount">0 seleccionados</span>
+        </div>
+        <div class="group">
+          <label class="switch" title="Lo que hagas en una pantalla se replica en todos los seleccionados"><input type="checkbox" id="syncControl" /><span>Control sincronizado</span></label>
+          <label class="switch"><input type="checkbox" id="liveView" checked /><span>Vista en vivo</span></label>
+          <input type="range" id="thumbSize" min="140" max="360" value="200" title="Tamaño de miniaturas" />
+          <button id="btnConnect">🔌 Conectar</button>
+        </div>
+      </header>
+      <div class="actionbar">
+        <button data-act="apk">📦 Instalar APK</button>
+        <button data-act="push">📤 Enviar archivos</button>
+        <button data-act="shell">💻 Shell</button>
+        <button data-act="text">⌨ Texto</button>
+        <button data-act="url">🌐 Abrir URL</button>
+        <button data-act="run">▶ Ejecutar flujo</button>
+        <button data-act="proxy">🛡 Proxy</button>
+        <button data-act="rename">🏷 Nombrar / agrupar</button>
+        <button data-act="wifi">📶 USB → Wi-Fi</button>
+        <button data-act="home">⌂ Inicio</button>
+        <button data-act="back">↩ Atrás</button>
+        <button data-act="wake">🔓 Despertar</button>
+        <button data-act="reboot" class="danger">⟲ Reiniciar</button>
+      </div>
+      <div id="dropHint" class="drop-hint">Suelta APKs para instalar o archivos para enviar a los dispositivos seleccionados</div>
+      <div id="deviceGrid" class="grid"></div>
+      <div id="emptyDevices" class="empty">
+        <h2>No hay dispositivos conectados</h2>
+        <p>Conecta teléfonos por USB (o hub OTG) con <b>Depuración USB</b> activada, o pulsa <b>🔌 Conectar</b> para Wi-Fi.</p>
+        <p class="muted" id="adbHint"></p>
+      </div>
+    </section>
+
+    <!-- ================= EDITOR ================= -->
+    <section id="view-editor" class="view">
+      <header class="toolbar">
+        <div class="group">
+          <select id="wfSelect"></select>
+          <input id="wfName" placeholder="Nombre del flujo" />
+          <button id="wfNew" class="ghost">＋ Nuevo</button>
+          <button id="wfTemplate" class="ghost">📚 Plantillas</button>
+          <button id="wfSave">💾 Guardar</button>
+          <button id="wfDuplicate" class="ghost">⧉ Duplicar</button>
+          <button id="wfDelete" class="ghost danger">🗑</button>
+        </div>
+        <div class="group">
+          <button id="wfImport" class="ghost">⬆ Importar</button>
+          <button id="wfExport" class="ghost">⬇ Exportar</button>
+          <button id="wfZoomOut" class="ghost">−</button>
+          <button id="wfZoomIn" class="ghost">＋</button>
+          <button id="wfRun" class="primary">▶ Ejecutar en seleccionados</button>
+        </div>
+      </header>
+      <div class="editor-wrap">
+        <div class="palette" id="palette"></div>
+        <div id="drawflow"></div>
+      </div>
+    </section>
+
+    <!-- ================= EJECUCIONES ================= -->
+    <section id="view-runs" class="view">
+      <header class="toolbar">
+        <div class="group"><h2>Ejecuciones activas</h2></div>
+        <div class="group"><button id="btnStopAll" class="danger">⏹ Detener todo</button></div>
+      </header>
+      <div id="runsList" class="runs"></div>
+      <div class="split">
+        <div class="panel">
+          <div class="panel-head"><h3>Registro en vivo</h3>
+            <div class="group"><select id="logLevel"><option value="">Todo</option><option value="error">Errores</option><option value="warn">Avisos</option></select>
+            <input id="logFilter" placeholder="Filtrar…" /><button id="logClear" class="ghost">Limpiar</button></div></div>
+          <pre id="logBox" class="log"></pre>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Historial</h3><button id="histExport" class="ghost">⬇ CSV</button></div>
+          <div id="historyBox" class="history"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PROGRAMADOR ================= -->
+    <section id="view-schedules" class="view">
+      <header class="toolbar"><div class="group"><h2>Tareas programadas</h2></div><div class="group"><button id="schNew" class="primary">＋ Nueva tarea</button></div></header>
+      <div id="schedList" class="cards"></div>
+    </section>
+
+    <!-- ================= DATOS ================= -->
+    <section id="view-data" class="view">
+      <header class="toolbar"><div class="group"><h2>Tablas de datos</h2></div><div class="group"><button id="tblImport" class="primary">⬆ Importar CSV</button></div></header>
+      <p class="muted pad">Importa un CSV (por ejemplo usuario,clave,bio). El nodo <b>Leer fila de tabla</b> carga cada columna como variable <code>{usuario}</code>, <code>{clave}</code>… asignando una fila distinta a cada dispositivo.</p>
+      <div id="tblList" class="cards"></div>
+      <div id="tblPreview" class="table-preview"></div>
+    </section>
+
+    <!-- ================= AJUSTES ================= -->
+    <section id="view-settings" class="view">
+      <header class="toolbar"><div class="group"><h2>Ajustes</h2></div><div class="group"><button id="setSave" class="primary">💾 Guardar ajustes</button></div></header>
+      <div id="settingsForm" class="settings"></div>
+    </section>
+  </main>
+
+  <div id="modalRoot"></div>
+  <div id="toasts"></div>
+  <div id="progress" class="progress hidden"><span></span><div><i></i></div></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

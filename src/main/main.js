@@ -1,0 +1,329 @@
+import { app, BrowserWindow, ipcMain, dialog, nativeImage, shell } from 'electron';
+import path from 'node:path';
+import fs from 'node:fs';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { AdbExe } from './adb/exe.js';
+import { UsbDirectBackend } from './adb/usbDirect.js';
+import { DeviceManager } from './devices.js';
+import { Engine } from './automation/engine.js';
+import { Store, DEFAULT_SETTINGS } from './store.js';
+import { Notifier } from './notifier.js';
+import { Scheduler } from './scheduler.js';
+import { ApiServer } from './api.js';
+import { Tools } from './tools.js';
+import { parseCsv, toCsv } from './csv.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+if (!app.requestSingleInstanceLock()) app.quit();
+
+const userData = app.getPath('userData');
+const store = new Store(userData);
+const tools = new Tools(path.join(userData, 'tools'));
+const settings = () => store.get('settings');
+const adbPath = () => settings().adbPath || tools.localAdb() || 'adb';
+const adb = new AdbExe(adbPath);
+const usb = new UsbDirectBackend(userData);
+const devices = new DeviceManager({ adb, usb, getSettings: settings });
+const notifier = new Notifier(settings);
+const screenshotsDir = path.join(app.getPath('pictures'), 'Granja');
+const engine = new Engine({ devices, store, notifier, screenshotsDir });
+const scheduler = new Scheduler({ store, engine, devices, onEvent: (m) => toast(m) });
+const api = new ApiServer({ store, devices, engine });
+const health = {}; // serial -> details
+const alerted = new Set();
+
+let win;
+const emit = (type, payload) => win?.webContents.send('event', { type, payload });
+const toast = (message, level = 'info') => emit('toast', { message, level });
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1500, height: 940, minWidth: 1100, minHeight: 700,
+    backgroundColor: '#0f1117',
+    title: 'Granja Farm Manager',
+    icon: path.join(__dirname, '../../build/icon.png'),
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false },
+  });
+  win.loadFile(path.join(__dirname, '../renderer/index.html'));
+}
+
+// ---------- Monitor de salud y alertas ----------
+async function healthTick() {
+  const s = settings();
+  for (const d of devices.ready()) {
+    try {
+      const info = await d.details();
+      health[d.serial] = { ...info, updatedAt: Date.now() };
+      const name = store.get('deviceMeta')[d.serial]?.name || d.serial;
+      const key = (k) => `${d.serial}:${k}`;
+      if (info.battery != null && info.battery < s.alertBatteryBelow && !info.charging) {
+        if (!alerted.has(key('bat'))) { alerted.add(key('bat')); alert(`🔋 ${name}: batería al ${info.battery}%`); }
+      } else alerted.delete(key('bat'));
+      if (info.temperature != null && info.temperature > s.alertTempAbove) {
+        if (!alerted.has(key('temp'))) { alerted.add(key('temp')); alert(`🔥 ${name}: temperatura ${info.temperature} °C`); }
+      } else alerted.delete(key('temp'));
+    } catch {}
+  }
+  emit('health', health);
+}
+
+function alert(message) {
+  toast(message, 'warn');
+  notifier.send(message).catch(() => {});
+}
+
+devices.on('changed', (list) => emit('devices', list));
+devices.on('disconnected', (serial) => {
+  delete health[serial];
+  if (settings().alertOnDisconnect) {
+    const name = store.get('deviceMeta')[serial]?.name || serial;
+    alert(`🔌 ${name} se desconectó`);
+  }
+});
+engine.on('runs', (runs) => emit('runs', runs));
+engine.on('log', (entry) => emit('log', entry));
+
+// ---------- Utilidades ----------
+async function forEachSerial(serials, fn) {
+  const results = await Promise.all(serials.map(async (s) => {
+    try { return { serial: s, ok: true, out: String((await fn(devices.get(s), s)) ?? '').trim() }; } catch (e) { return { serial: s, ok: false, out: e.message }; }
+  }));
+  return results;
+}
+
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+async function pctToPx(d, xp, yp) {
+  const size = await d.getScreenSize();
+  return [Math.round(xp * size.width), Math.round(yp * size.height)];
+}
+
+// ---------- API para el renderer ----------
+const handlers = {
+  getState: async () => {
+    let adbVersion = null;
+    try { adbVersion = await adb.version(); } catch {}
+    return {
+      devices: devices.list(), settings: settings(), defaults: DEFAULT_SETTINGS, workflows: store.get('workflows'),
+      schedules: store.get('schedules'), deviceMeta: store.get('deviceMeta'), tables: store.get('tables').map(({ rows, ...t }) => ({ ...t, count: rows.length })),
+      runs: engine.listRuns(), adbVersion, adbPath: adbPath(), lastError: devices.lastError, api: api.status(), health,
+      scrcpy: settings().scrcpyPath || tools.localScrcpy(), screenshotsDir, version: app.getVersion(),
+    };
+  },
+
+  // Dispositivos
+  refreshDevices: () => devices.refresh(),
+  restartAdb: async () => { await adb.killServer(); await adb.startServer(); await devices.refresh(); },
+  screenshot: async (serial, width = 360) => {
+    const png = await devices.get(serial).screencapPng();
+    const img = nativeImage.createFromBuffer(png);
+    const size = img.getSize();
+    const out = width && size.width > width ? img.resize({ width, quality: 'good' }) : img;
+    return { data: `data:image/jpeg;base64,${out.toJPEG(72).toString('base64')}`, width: size.width, height: size.height };
+  },
+  saveScreenshot: async (serial) => {
+    const name = (store.get('deviceMeta')[serial]?.name || serial).replace(/[^\w.-]+/g, '_');
+    fs.mkdirSync(screenshotsDir, { recursive: true });
+    const file = path.join(screenshotsDir, `${name}_${Date.now()}.png`);
+    fs.writeFileSync(file, await devices.get(serial).screencapPng());
+    return file;
+  },
+  details: async (serial) => (health[serial] = { ...(await devices.get(serial).details()), updatedAt: Date.now() }),
+  tap: (serials, xp, yp) => forEachSerial(serials, async (d) => d.shell(`input tap ${(await pctToPx(d, xp, yp)).join(' ')}`)),
+  swipe: (serials, x1, y1, x2, y2, ms = 300) => forEachSerial(serials, async (d) => {
+    const a = await pctToPx(d, x1, y1); const b = await pctToPx(d, x2, y2);
+    return d.shell(`input swipe ${a.join(' ')} ${b.join(' ')} ${ms}`);
+  }),
+  key: (serials, code) => forEachSerial(serials, (d) => d.shell(`input keyevent ${code}`)),
+  text: async (serials, text) => {
+    const { typeText } = await import('./automation/actions.js');
+    return forEachSerial(serials, (d) => typeText(d, text, false));
+  },
+  shellCmd: (serials, cmd) => forEachSerial(serials, (d) => d.shell(cmd, { timeout: 60000 })),
+  installApks: (serials, files) => forEachSerial(serials, async (d) => {
+    const outs = [];
+    for (const f of files) outs.push(`${path.basename(f)}: ${String(await d.install(f)).trim().split('\n').pop()}`);
+    return outs.join('\n');
+  }),
+  pushFiles: (serials, files, remote = '/sdcard/Download/') => forEachSerial(serials, async (d) => {
+    for (const f of files) {
+      await d.push(f, remote.endsWith('/') ? remote : `${remote}/`);
+      await d.shell(`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d 'file://${remote.replace(/\/?$/, '/')}${path.basename(f)}'`).catch(() => {});
+    }
+    return `${files.length} archivo(s) enviados`;
+  }),
+  openUrl: (serials, url) => forEachSerial(serials, (d) => d.shell(`am start -a android.intent.action.VIEW -d '${url.replace(/'/g, '')}'`)),
+  reboot: (serials, mode) => forEachSerial(serials, (d) => d.reboot(mode)),
+  setProxy: (serials, proxy) => forEachSerial(serials, (d) => d.shell(`settings put global http_proxy ${proxy || ':0'}`)),
+  listPackages: async (serial) => (await devices.get(serial).shell('pm list packages -3')).split('\n').map((l) => l.replace('package:', '').trim()).filter(Boolean).sort(),
+  connectWifi: (addr) => devices.connectWifi(addr),
+  pair: async (addr, code) => (await adb.pair(addr, code)).trim(),
+  disconnect: (addr) => { devices.forgetWifi(addr); return adb.disconnect(addr); },
+  usbToWifi: (serials) => forEachSerial(serials, (d) => devices.usbToWifi(d.serial)),
+  scanNetwork: (port = 5555) => devices.scanNetwork(port, (done, total) => emit('progress', { label: 'Escaneando red', pct: Math.round((done / total) * 100) })),
+  scrcpy: (serial, opts = {}) => {
+    const exe = settings().scrcpyPath || tools.localScrcpy();
+    if (!exe) throw new Error('scrcpy no está instalado. Descárgalo en Ajustes.');
+    const name = store.get('deviceMeta')[serial]?.name || serial;
+    const args = ['-s', serial, '--window-title', name, '--max-size', String(opts.maxSize || 1024), '--stay-awake'];
+    if (opts.record) args.push('--record', path.join(screenshotsDir, `${name.replace(/[^\w.-]+/g, '_')}_${Date.now()}.mp4`));
+    if (opts.noControl) args.push('--no-control');
+    fs.mkdirSync(screenshotsDir, { recursive: true });
+    const child = spawn(exe, args, { env: { ...process.env, ADB: adbPath() }, detached: true, stdio: 'ignore', windowsHide: false });
+    child.unref();
+    return true;
+  },
+  setMeta: (serial, meta) => {
+    const all = store.get('deviceMeta');
+    all[serial] = { ...(all[serial] || {}), ...meta };
+    store.set('deviceMeta', all);
+    return all;
+  },
+  batchMeta: (serials, { namePattern, group, startAt = 1 }) => {
+    const all = store.get('deviceMeta');
+    serials.forEach((s, i) => {
+      const m = { ...(all[s] || {}) };
+      if (namePattern) m.name = namePattern.replace(/#+/g, (h) => String(i + Number(startAt)).padStart(h.length, '0'));
+      if (group != null) m.group = group;
+      all[s] = m;
+    });
+    store.set('deviceMeta', all);
+    return all;
+  },
+
+  // Flujos
+  saveWorkflow: (wf) => {
+    const list = store.get('workflows');
+    if (!wf.id) wf.id = uid();
+    wf.updatedAt = Date.now();
+    const i = list.findIndex((w) => w.id === wf.id);
+    if (i >= 0) list[i] = wf; else list.push(wf);
+    store.set('workflows', list);
+    return wf;
+  },
+  deleteWorkflow: (id) => store.set('workflows', store.get('workflows').filter((w) => w.id !== id)),
+  runWorkflow: (id, serials, opts = {}) => {
+    const wf = store.get('workflows').find((w) => w.id === id);
+    if (!wf) throw new Error('Flujo no encontrado');
+    const s = settings();
+    return engine.start(wf, serials, { concurrency: opts.concurrency ?? s.runConcurrency, staggerMs: opts.staggerMs ?? s.runStaggerMs });
+  },
+  stopRun: (id) => engine.stop(id),
+  stopAll: () => engine.stopAll(),
+  exportWorkflow: async (id) => {
+    const wf = store.get('workflows').find((w) => w.id === id);
+    const res = await dialog.showSaveDialog(win, { defaultPath: `${wf.name}.granja.json`, filters: [{ name: 'Flujo Granja', extensions: ['json'] }] });
+    if (res.canceled) return false;
+    fs.writeFileSync(res.filePath, JSON.stringify({ format: 'granja-workflow', version: 1, ...wf, id: undefined }, null, 2));
+    return true;
+  },
+  importWorkflow: async () => {
+    const res = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Flujo Granja', extensions: ['json'] }] });
+    if (res.canceled) return [];
+    return res.filePaths.map((f) => {
+      const wf = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (!wf.graph) throw new Error(`${path.basename(f)} no es un flujo válido`);
+      return handlers.saveWorkflow({ name: wf.name || path.basename(f), graph: wf.graph, description: wf.description || '' });
+    });
+  },
+
+  // Programaciones
+  saveSchedule: (sc) => {
+    const list = store.get('schedules');
+    if (!sc.id) sc.id = uid();
+    const i = list.findIndex((x) => x.id === sc.id);
+    if (i >= 0) list[i] = sc; else list.push(sc);
+    store.set('schedules', list);
+    return list;
+  },
+  deleteSchedule: (id) => { store.set('schedules', store.get('schedules').filter((x) => x.id !== id)); return store.get('schedules'); },
+
+  // Tablas de datos
+  importTable: async (name) => {
+    const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }] });
+    if (res.canceled) return null;
+    const rows = parseCsv(fs.readFileSync(res.filePaths[0], 'utf8'));
+    if (rows.length < 1) throw new Error('El CSV está vacío');
+    const [columns, ...data] = rows;
+    const tables = store.get('tables').filter((t) => t.name !== name);
+    tables.push({ name: name || path.basename(res.filePaths[0], '.csv'), columns: columns.map((c) => c.trim()), rows: data });
+    store.set('tables', tables);
+    return true;
+  },
+  deleteTable: (name) => store.set('tables', store.get('tables').filter((t) => t.name !== name)),
+  previewTable: (name) => {
+    const t = store.get('tables').find((x) => x.name === name);
+    return t ? { columns: t.columns, rows: t.rows.slice(0, 50), count: t.rows.length } : null;
+  },
+
+  // Historial
+  getHistory: () => store.get('history'),
+  exportHistory: async () => {
+    const res = await dialog.showSaveDialog(win, { defaultPath: 'historial-granja.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
+    if (res.canceled) return false;
+    const rows = [['id', 'flujo', 'origen', 'inicio', 'fin', 'estado', 'ok', 'errores']];
+    for (const h of store.get('history')) {
+      const vals = Object.values(h.results || {});
+      rows.push([h.id, h.workflow, h.source, new Date(h.startedAt).toISOString(), new Date(h.finishedAt).toISOString(), h.status,
+        vals.filter((v) => v === 'ok').length, vals.filter((v) => v === 'error').length]);
+    }
+    fs.writeFileSync(res.filePath, toCsv(rows));
+    return true;
+  },
+
+  // Ajustes y herramientas
+  saveSettings: (s) => {
+    store.set('settings', { ...settings(), ...s });
+    api.restart();
+    return settings();
+  },
+  pickFiles: async (opts = {}) => {
+    const res = await dialog.showOpenDialog(win, { properties: ['openFile', ...(opts.multi ? ['multiSelections'] : [])], filters: opts.filters });
+    return res.canceled ? [] : res.filePaths;
+  },
+  downloadAdb: async () => {
+    await adb.killServer().catch(() => {});
+    const p = await tools.installPlatformTools((pct) => emit('progress', { label: 'Descargando platform-tools', pct }));
+    store.set('settings', { ...settings(), adbPath: p });
+    await adb.startServer();
+    return p;
+  },
+  downloadScrcpy: async () => {
+    const p = await tools.installScrcpy((pct) => emit('progress', { label: 'Descargando scrcpy', pct }));
+    store.set('settings', { ...settings(), scrcpyPath: p });
+    return p;
+  },
+  testNotify: () => notifier.send('Prueba de notificación ✅'),
+  openFolder: (p) => shell.openPath(p || screenshotsDir),
+  openExternal: (url) => shell.openExternal(url),
+};
+
+ipcMain.handle('call', async (_e, method, args) => {
+  const fn = handlers[method];
+  if (!fn) throw new Error(`Método desconocido: ${method}`);
+  return fn(...(args || []));
+});
+
+app.whenReady().then(async () => {
+  createWindow();
+  await adb.startServer();
+  devices.start();
+  scheduler.start();
+  api.restart();
+  setInterval(healthTick, 60000);
+  setTimeout(healthTick, 5000);
+});
+
+app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+app.on('window-all-closed', () => app.quit());
+app.on('before-quit', () => {
+  engine.stopAll();
+  devices.stop();
+  scheduler.stop();
+  api.close();
+  usb.closeAll();
+  store.flush();
+});
