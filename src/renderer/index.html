@@ -10,6 +10,7 @@
 </head>
 <body>
   <aside class="sidebar">
+    <button class="edge-toggle" id="sideToggle" title="Contraer menú (Ctrl+B)"><i data-icon="chevron-left" data-size="14"></i></button>
     <div class="brand">
       <img class="logo" src="assets/logo.svg" alt="Nexus Dev" width="36" height="36" />
       <div><b>Nexus Farmer</b><small>by Nexus Dev</small></div>
@@ -42,7 +43,12 @@
           <div class="tabs" id="ccTabs">
             <button data-tab="screen" class="active">Pantalla</button>
             <button data-tab="otg">OTG</button>
-            <button class="collapse icon-only ghost" id="ccCollapse" title="Ocultar panel"><i data-icon="chevron-left"></i></button>
+            <button class="collapse icon-only ghost" id="ccCollapse" title="Contraer panel"><i data-icon="chevron-left"></i></button>
+          </div>
+          <div class="cc-rail">
+            <button class="ghost icon-only" data-open="screen" title="Pantalla"><i data-icon="monitor"></i></button>
+            <button class="ghost icon-only" data-open="otg" title="OTG"><i data-icon="usb"></i></button>
+            <button class="ghost icon-only" data-open="groups" title="Grupos"><i data-icon="layers"></i></button>
           </div>
           <div class="cc-tab" data-tab="screen">
             <label class="slider"><span>Vista grande</span><input type="range" id="bigSize" min="420" max="900" step="10" /></label>

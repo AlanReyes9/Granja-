@@ -131,7 +131,21 @@ input[type=range] { height: 4px; padding: 0; border: 0; accent-color: var(--acce
 .count { color: var(--muted); font-size: 12px; }
 
 /* ---------- Barra lateral ---------- */
-.sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 14px 14px; }
+.sidebar { width: 220px; flex: none; background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 14px 14px; position: relative; z-index: 5; transition: width .18s, padding .18s; }
+.edge-toggle { position: absolute; top: 24px; right: -13px; width: 26px; height: 26px; padding: 0; border-radius: 50%; background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-sm); z-index: 6; }
+.edge-toggle:hover { border-color: var(--accent); }
+.edge-toggle:hover .ic { color: var(--accent); }
+/* Menú contraído: solo iconos */
+body.side-collapsed .sidebar { width: 72px; padding: 18px 10px 14px; }
+body.side-collapsed .edge-toggle .ic { transform: rotate(180deg); }
+body.side-collapsed .brand { justify-content: center; padding: 0 0 22px; }
+body.side-collapsed .brand > div { display: none; }
+body.side-collapsed nav button { justify-content: center; padding: 0; position: relative; }
+body.side-collapsed nav button span { display: none; }
+body.side-collapsed nav button em { position: absolute; top: 3px; right: 5px; padding: 0 4px; line-height: 14px; font-size: 9.5px; background: var(--accent); color: #fff; }
+body.side-collapsed .side-card { padding: 10px 4px; align-items: center; text-align: center; }
+body.side-collapsed .side-card .row, body.side-collapsed .side-card .big span { display: none; }
+body.side-collapsed .side-card .big { font-size: 18px; }
 .brand { display: flex; gap: 10px; align-items: center; padding: 0 6px 22px; }
 .brand .logo { width: 36px; height: 36px; border-radius: 10px; flex: none; }
 .brand b { display: block; font-size: 17px; letter-spacing: -.02em; line-height: 1.15; }
@@ -172,9 +186,15 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 /* ---------- Centro de control ---------- */
 .cc { flex: 1; display: flex; min-height: 0; padding: 16px; gap: 16px; }
 .cc-panel { width: 250px; flex: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow-sm); transition: width .18s; }
-.cc.collapsed .cc-panel { width: 46px; }
-.cc.collapsed .cc-panel > :not(.tabs), .cc.collapsed .tabs > :not(.collapse) { display: none; }
+.cc.collapsed .cc-panel { width: 52px; }
+.cc.collapsed .cc-panel > :not(.tabs):not(.cc-rail), .cc.collapsed .tabs > :not(.collapse) { display: none; }
+.cc.collapsed .tabs { justify-content: center; padding: 10px 0 6px; }
+.cc.collapsed .tabs .collapse { margin: 0; }
 .cc.collapsed .collapse .ic { transform: rotate(180deg); }
+.cc-rail { display: none; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; }
+.cc.collapsed .cc-rail { display: flex; }
+.cc-rail button { width: 34px; height: 34px; }
+.cc-rail button .ic { width: 18px; height: 18px; }
 .tabs { display: flex; align-items: center; gap: 4px; padding: 10px 10px 0; border-bottom: 1px solid var(--line); }
 .tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; height: 36px; padding: 0 10px; color: var(--muted); font-weight: 600; }
 .tabs button:hover { background: transparent; color: var(--text); }

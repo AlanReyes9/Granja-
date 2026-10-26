@@ -24,6 +24,13 @@ export function renderSideStatus() {
   $('#monitorCount').textContent = running || '';
 }
 
+/** Contrae o expande el menú lateral y recuerda la elección. */
+function setSidebarCollapsed(on) {
+  document.body.classList.toggle('side-collapsed', on);
+  $('#sideToggle').title = on ? 'Expandir menú (Ctrl+B)' : 'Contraer menú (Ctrl+B)';
+  try { localStorage.setItem('nexus.sidebarCollapsed', on ? '1' : '0'); } catch {}
+}
+
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   $('#btnTheme').innerHTML = icon(theme === 'dark' ? 'sun' : 'moon');
@@ -37,6 +44,15 @@ async function main() {
   applyTheme(theme);
   $('#btnTheme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   $('#btnMonitor').onclick = () => switchView('runs');
+  // Con el menú contraído solo se ven los iconos: el nombre de cada sección queda como tooltip.
+  $$('nav button').forEach((b) => { b.title = b.querySelector('span').textContent; });
+  let sideCollapsed = false;
+  try { sideCollapsed = localStorage.getItem('nexus.sidebarCollapsed') === '1'; } catch {}
+  setSidebarCollapsed(sideCollapsed);
+  $('#sideToggle').onclick = () => setSidebarCollapsed(!document.body.classList.contains('side-collapsed'));
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key.toLowerCase() === 'b') { e.preventDefault(); $('#sideToggle').click(); }
+  });
   $('#btnInspector').onclick = () => openInspector();
   await reloadState();
   $$('nav button').forEach((b) => (b.onclick = () => switchView(b.dataset.view)));

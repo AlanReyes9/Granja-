@@ -516,7 +516,22 @@ export function initDevices() {
     $$('#ccTabs [data-tab]').forEach((x) => x.classList.toggle('active', x === b));
     $$('.cc-tab').forEach((t) => t.classList.toggle('hidden', t.dataset.tab !== b.dataset.tab));
   }));
-  $('#ccCollapse').onclick = () => $('.cc').classList.toggle('collapsed');
+  const setPanelCollapsed = (on) => {
+    $('.cc').classList.toggle('collapsed', on);
+    $('#ccCollapse').title = on ? 'Expandir panel' : 'Contraer panel';
+    try { localStorage.setItem('nexus.panelCollapsed', on ? '1' : '0'); } catch {}
+  };
+  let panelCollapsed = false;
+  try { panelCollapsed = localStorage.getItem('nexus.panelCollapsed') === '1'; } catch {}
+  setPanelCollapsed(panelCollapsed);
+  $('#ccCollapse').onclick = () => setPanelCollapsed(!$('.cc').classList.contains('collapsed'));
+  // Iconos del panel contraído: lo expanden directamente en la sección elegida.
+  $$('.cc-rail [data-open]').forEach((b) => (b.onclick = () => {
+    setPanelCollapsed(false);
+    const tab = b.dataset.open === 'groups' ? 'screen' : b.dataset.open;
+    $(`#ccTabs [data-tab="${tab}"]`).click();
+    if (b.dataset.open === 'groups') $('#groupList').scrollIntoView({ block: 'nearest' });
+  }));
   $$('#trFilter button').forEach((b) => (b.onclick = () => { state.trFilter = b.dataset.tr || null; renderDevices(); }));
   $('#btnNewGroup').onclick = async () => {
     const sel = selectedSerials();

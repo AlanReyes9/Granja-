@@ -21,6 +21,7 @@ Capturas de la propia app con teléfonos de demostración.
 |---|---|
 | ![Centro de control](docs/capturas/01-dispositivos.png) Centro de control | ![Vista grande](docs/capturas/03-vista-grande.png) Doble clic: vista grande |
 | ![Inspector](docs/capturas/04b-inspector.png) Inspector de pantalla | ![Tema oscuro](docs/capturas/18-tema-oscuro.png) Tema oscuro y filtro por grupo |
+| ![Barras contraídas](docs/capturas/19-barras-contraidas.png) Menú y panel contraídos | |
 | ![Proxys](docs/capturas/07-proxys.png) Proxys y asignación por teléfono | ![Dispositivos con proxy](docs/capturas/08-dispositivos-con-proxy.png) Proxy visible en cada tarjeta |
 | ![Editor](docs/capturas/11-flujo-login-con-tabla.png) Editor de flujos por nodos | ![Ejecuciones](docs/capturas/13-ejecuciones.png) Ejecuciones e historial |
 | ![Programador](docs/capturas/14-programador.png) Programador | ![Ajustes](docs/capturas/17-ajustes.png) Ajustes |
@@ -43,6 +44,7 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 
 **Centro de control**
 - Tema claro (por defecto) u oscuro.
+- El menú lateral (Ctrl+B) y el panel del Centro de control se pueden contraer; la app recuerda cómo los dejaste.
 - Panel lateral con deslizadores de vista grande, miniaturas, calidad y fotogramas por segundo, filtro USB / Wi-Fi / OTG y lista de grupos con contadores (seleccionados / total).
 - Cada teléfono lleva su número, su barra de navegación Android (atrás, inicio, recientes), su conexión, su batería y su proxy o grupo.
 - **Inspector**: muestra los elementos de la pantalla de un teléfono (texto, resource-id, posición en %) para saber qué poner en los nodos *Tocar texto*, *Tocar por resource-id* o *Tocar*.
