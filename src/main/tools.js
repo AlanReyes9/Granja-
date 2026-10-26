@@ -20,7 +20,7 @@ function findFile(dir, name, depth = 3) {
 }
 
 async function download(url, dest, onProgress) {
-  const res = await fetch(url, { headers: { 'user-agent': 'granja-farm-manager' } });
+  const res = await fetch(url, { headers: { 'user-agent': 'nexus-farmer' } });
   if (!res.ok) throw new Error(`Descarga fallida (${res.status}) ${url}`);
   const total = Number(res.headers.get('content-length')) || 0;
   const out = fs.createWriteStream(dest);
@@ -71,7 +71,7 @@ export class Tools {
 
   async installScrcpy(onProgress) {
     fs.mkdirSync(this.dir, { recursive: true });
-    const rel = await (await fetch(SCRCPY_API, { headers: { 'user-agent': 'granja-farm-manager' } })).json();
+    const rel = await (await fetch(SCRCPY_API, { headers: { 'user-agent': 'nexus-farmer' } })).json();
     const asset = (rel.assets || []).find((a) => /win64.*\.zip$/i.test(a.name));
     if (!asset) throw new Error('No se encontró el paquete win64 de scrcpy');
     const zip = path.join(this.dir, 'scrcpy.zip');

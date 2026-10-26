@@ -2,7 +2,7 @@
 import { icon, hydrateIcons } from './icons.js';
 
 export { icon, hydrateIcons };
-export const api = window.granja;
+export const api = window.nexus;
 export const state = {
   devices: [], settings: {}, workflows: [], schedules: [], deviceMeta: {}, tables: [], runs: [], health: {}, proxies: [],
   selected: new Set(),

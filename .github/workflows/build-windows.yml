@@ -25,7 +25,7 @@ jobs:
         run: npx electron-builder --win --x64 --publish never
       - uses: actions/upload-artifact@v4
         with:
-          name: GranjaFarmManager-windows
+          name: NexusFarmer-windows
           path: |
             dist/*.exe
           if-no-files-found: error

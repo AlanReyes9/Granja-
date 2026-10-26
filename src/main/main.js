@@ -22,7 +22,33 @@ if (!app.requestSingleInstanceLock()) app.quit();
 app.commandLine.appendSwitch('lang', 'es-ES');
 
 const userData = app.getPath('userData');
+migrateFromOldName(userData);
 const store = new Store(userData);
+
+/**
+ * La app se llamaba "Granja Farm Manager" y Windows guardaba sus datos en otra carpeta. La primera vez
+ * que se abre Nexus Farmer se copian flujos, ajustes, proxys, la clave ADB del motor OTG y las herramientas.
+ */
+function migrateFromOldName(dir) {
+  const oldDir = path.join(app.getPath('appData'), 'Granja Farm Manager');
+  if (fs.existsSync(path.join(dir, 'granja-data.json')) || !fs.existsSync(path.join(oldDir, 'granja-data.json'))) return;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const name of ['granja-data.json', 'granja_adbkey.pk8', 'tools']) {
+      const from = path.join(oldDir, name);
+      if (fs.existsSync(from)) fs.cpSync(from, path.join(dir, name), { recursive: true });
+    }
+    // Las rutas a adb/scrcpy descargados apuntaban a la carpeta antigua.
+    const file = path.join(dir, 'granja-data.json');
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const key of ['adbPath', 'scrcpyPath']) {
+      if (data.settings?.[key]?.startsWith(oldDir)) data.settings[key] = dir + data.settings[key].slice(oldDir.length);
+    }
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('No se pudieron migrar los datos de Granja Farm Manager:', e);
+  }
+}
 const tools = new Tools(path.join(userData, 'tools'));
 const settings = () => store.get('settings');
 const adbPath = () => settings().adbPath || tools.localAdb() || 'adb';
@@ -30,7 +56,7 @@ const adb = new AdbExe(adbPath);
 const usb = new UsbDirectBackend(userData);
 const devices = new DeviceManager({ adb, usb, getSettings: settings });
 const notifier = new Notifier(settings);
-const screenshotsDir = path.join(app.getPath('pictures'), 'Granja');
+const screenshotsDir = path.join(app.getPath('pictures'), 'Nexus Farmer');
 const proxies = new ProxyManager({ store, devices });
 const engine = new Engine({ devices, store, notifier, screenshotsDir, proxies });
 const scheduler = new Scheduler({ store, engine, devices, onEvent: (m) => toast(m) });
@@ -46,7 +72,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1500, height: 940, minWidth: 1100, minHeight: 700,
     backgroundColor: '#0f1117',
-    title: 'Granja Farm Manager',
+    title: 'Nexus Farmer',
     icon: path.join(__dirname, '../../build/icon.png'),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false },
@@ -255,13 +281,13 @@ const handlers = {
   stopAll: () => engine.stopAll(),
   exportWorkflow: async (id) => {
     const wf = store.get('workflows').find((w) => w.id === id);
-    const res = await dialog.showSaveDialog(win, { defaultPath: `${wf.name}.granja.json`, filters: [{ name: 'Flujo Granja', extensions: ['json'] }] });
+    const res = await dialog.showSaveDialog(win, { defaultPath: `${wf.name}.nexus.json`, filters: [{ name: 'Flujo de Nexus Farmer', extensions: ['json'] }] });
     if (res.canceled) return false;
-    fs.writeFileSync(res.filePath, JSON.stringify({ format: 'granja-workflow', version: 1, ...wf, id: undefined }, null, 2));
+    fs.writeFileSync(res.filePath, JSON.stringify({ format: 'nexus-farmer-workflow', version: 1, ...wf, id: undefined }, null, 2));
     return true;
   },
   importWorkflow: async () => {
-    const res = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Flujo Granja', extensions: ['json'] }] });
+    const res = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Flujo de Nexus Farmer', extensions: ['json'] }] });
     if (res.canceled) return [];
     return res.filePaths.map((f) => {
       const wf = JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -302,7 +328,7 @@ const handlers = {
   // Historial
   getHistory: () => store.get('history'),
   exportHistory: async () => {
-    const res = await dialog.showSaveDialog(win, { defaultPath: 'historial-granja.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
+    const res = await dialog.showSaveDialog(win, { defaultPath: 'historial-nexus-farmer.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
     if (res.canceled) return false;
     const rows = [['id', 'flujo', 'origen', 'inicio', 'fin', 'estado', 'ok', 'errores']];
     for (const h of store.get('history')) {

@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-contextBridge.exposeInMainWorld('granja', {
+contextBridge.exposeInMainWorld('nexus', {
   call: (method, ...args) => ipcRenderer.invoke('call', method, args),
   on: (handler) => {
     const fn = (_e, msg) => handler(msg);

@@ -133,7 +133,9 @@ input[type=range] { height: 4px; padding: 0; border: 0; accent-color: var(--acce
 /* ---------- Barra lateral ---------- */
 .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 14px 14px; }
 .brand { display: flex; gap: 10px; align-items: center; padding: 0 6px 22px; }
-.brand b { font-size: 19px; letter-spacing: -.02em; }
+.brand .logo { width: 36px; height: 36px; border-radius: 10px; flex: none; }
+.brand b { display: block; font-size: 17px; letter-spacing: -.02em; line-height: 1.15; }
+.brand small { display: block; color: var(--muted); font-size: 11.5px; }
 nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 nav button { justify-content: flex-start; background: transparent; border: 0; height: 40px; padding: 0 12px; color: var(--text-2); gap: 11px; border-radius: 9px; font-weight: 500; }
 nav button .ic { width: 18px; height: 18px; color: var(--muted); }

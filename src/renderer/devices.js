@@ -359,7 +359,7 @@ export async function openDetails(serial) {
     $m('#dProxyClear').onclick = async () => { await call('setProxy', [serial], ''); toast('Proxy quitado del teléfono (la asignación se mantiene)'); };
     $m('#dMirror').onclick = () => call('scrcpy', serial);
     $m('#dMirrorView').onclick = () => call('scrcpy', serial, { noControl: true });
-    $m('#dRecord').onclick = () => { call('scrcpy', serial, { record: true }); toast('Grabando. Cierra la ventana de scrcpy para terminar; el vídeo se guarda en Imágenes/Granja.'); };
+    $m('#dRecord').onclick = () => { call('scrcpy', serial, { record: true }); toast('Grabando. Cierra la ventana de scrcpy para terminar; el vídeo se guarda en Imágenes/Nexus Farmer.'); };
     $m('#dWifi').onclick = async () => showResults('USB a Wi-Fi', await call('usbToWifi', [serial]));
     $m('#dReboot').onclick = () => call('reboot', [serial]);
     $m('#dRecovery').onclick = () => call('reboot', [serial], 'recovery');

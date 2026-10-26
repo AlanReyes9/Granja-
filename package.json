@@ -1,11 +1,11 @@
 {
-  "name": "granja-farm-manager",
-  "productName": "Granja Farm Manager",
+  "name": "nexus-farmer",
+  "productName": "Nexus Farmer",
   "version": "1.0.0",
-  "description": "Gestor de granjas de teléfonos Android con automatizaciones por nodos (ADB USB, OTG directo y Wi-Fi)",
+  "description": "Nexus Farmer, de Nexus Dev: gestor de granjas de teléfonos Android con automatizaciones por nodos (ADB USB, OTG directo y Wi-Fi)",
   "main": "src/main/main.js",
   "type": "module",
-  "author": "alanreyes9",
+  "author": "Nexus Dev",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -26,9 +26,9 @@
     "electron-builder": "^26.18.0"
   },
   "build": {
-    "appId": "com.granja.farmmanager",
-    "productName": "Granja Farm Manager",
-    "copyright": "Copyright © 2026 alanreyes9",
+    "appId": "com.nexusdev.nexusfarmer",
+    "productName": "Nexus Farmer",
+    "copyright": "Copyright © 2026 Nexus Dev",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -64,11 +64,11 @@
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
       "createDesktopShortcut": true,
-      "shortcutName": "Granja Farm Manager",
-      "artifactName": "GranjaFarmManager-Setup-${version}.${ext}"
+      "shortcutName": "Nexus Farmer",
+      "artifactName": "NexusFarmer-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "GranjaFarmManager-Portable-${version}.${ext}"
+      "artifactName": "NexusFarmer-Portable-${version}.${ext}"
     }
   }
 }

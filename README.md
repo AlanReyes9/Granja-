@@ -1,11 +1,15 @@
-# Granja Farm Manager
+# Nexus Farmer
+
+<img src="src/renderer/assets/logo.svg" alt="Nexus Dev" width="72" />
+
+Una app de **Nexus Dev**.
 
 Aplicación de escritorio para Windows (`.exe`) para gestionar una granja de teléfonos Android: vista en vivo de todas las pantallas, control individual o sincronizado, acciones masivas y un **editor de automatizaciones por nodos** al estilo GenFarmer, con funciones extra.
 
 ## Descarga
 
-- **Instalador:** `GranjaFarmManager-Setup-x.y.z.exe`
-- **Portable (sin instalar):** `GranjaFarmManager-Portable-x.y.z.exe`
+- **Instalador:** `NexusFarmer-Setup-x.y.z.exe`
+- **Portable (sin instalar):** `NexusFarmer-Portable-x.y.z.exe`
 
 GitHub Actions compila los dos en cada push (pestaña **Actions → Compilar .exe para Windows → Artifacts**). Si subes un tag `v1.0.0`, además se publican en **Releases**.
 
@@ -44,7 +48,7 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - **Inspector**: muestra los elementos de la pantalla de un teléfono (texto, resource-id, posición en %) para saber qué poner en los nodos *Tocar texto*, *Tocar por resource-id* o *Tocar*.
 - **Monitor de tareas**: acceso directo a las ejecuciones en curso.
 
-**Granja y control**
+**Control de la granja**
 - Cuadrícula compacta con la pantalla de cada teléfono en vivo; el tamaño se ajusta con un deslizador.
 - **Doble clic** en una pantalla la abre en grande, con controles, datos del teléfono, proxy y apps.
 - Clic = tocar, arrastrar = deslizar, mantener = pulsación larga, rueda = scroll, clic derecho = Atrás.
@@ -74,7 +78,7 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - Doble clic en un nodo de la paleta lo añade a continuación del seleccionado (o del último añadido) y lo conecta solo.
 - Si un paso falla, el registro dice en qué nodo y por qué (app no instalada, uiautomator sin respuesta…).
 - Ejecución en paralelo con límite de concurrencia y **arranque escalonado** entre dispositivos.
-- Plantillas listas para usar, importar y exportar flujos (`.granja.json`), y Ctrl+S para guardar.
+- Plantillas listas para usar, importar y exportar flujos (`.nexus.json`), y Ctrl+S para guardar.
 
 **Extras frente a GenFarmer**
 - **Programador**: lanza flujos cada N minutos o a una hora fija ciertos días, en todos los teléfonos, en un grupo o en una lista.
@@ -111,7 +115,7 @@ Estructura:
 - `src/renderer`: interfaz.
 - `src/shared/nodes.js`: definición de los nodos.
 
-Los datos se guardan en `%APPDATA%/Granja Farm Manager/granja-data.json` y las capturas y grabaciones en `Imágenes/Granja`.
+Los datos se guardan en `%APPDATA%/Nexus Farmer/granja-data.json` y las capturas y grabaciones en `Imágenes/Nexus Farmer`.
 
 ## Uso responsable
 

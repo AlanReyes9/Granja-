@@ -11,14 +11,14 @@ export class Notifier {
       jobs.push(fetch(`https://api.telegram.org/bot${s.telegramToken}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: s.telegramChatId, text: `Granja: ${message}` }),
+        body: JSON.stringify({ chat_id: s.telegramChatId, text: `Nexus Farmer: ${message}` }),
       }));
     }
     if (s.webhookUrl) {
       jobs.push(fetch(s.webhookUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: message, content: message, source: 'granja-farm-manager', time: new Date().toISOString() }),
+        body: JSON.stringify({ text: message, content: message, source: 'nexus-farmer', time: new Date().toISOString() }),
       }));
     }
     if (!jobs.length) throw new Error('No hay Telegram ni webhook configurado');
