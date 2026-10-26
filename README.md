@@ -9,6 +9,19 @@ Aplicación de escritorio para Windows (`.exe`) para gestionar una granja de tel
 
 GitHub Actions compila los dos en cada push (pestaña **Actions → Compilar .exe para Windows → Artifacts**). Si subes un tag `v1.0.0`, además se publican en **Releases**.
 
+## Capturas
+
+Capturas de la propia app con teléfonos de demostración.
+
+| | |
+|---|---|
+| ![Dispositivos](docs/capturas/01-dispositivos.png) Cuadrícula de dispositivos | ![Vista grande](docs/capturas/03-vista-grande.png) Doble clic: vista grande |
+| ![Proxys](docs/capturas/07-proxys.png) Proxys y asignación por teléfono | ![Dispositivos con proxy](docs/capturas/08-dispositivos-con-proxy.png) Proxy visible en cada tarjeta |
+| ![Editor](docs/capturas/11-flujo-login-con-tabla.png) Editor de flujos por nodos | ![Ejecuciones](docs/capturas/13-ejecuciones.png) Ejecuciones e historial |
+| ![Programador](docs/capturas/14-programador.png) Programador | ![Ajustes](docs/capturas/17-ajustes.png) Ajustes |
+
+Todas las capturas están en [`docs/capturas`](docs/capturas).
+
 ## Conexión de dispositivos
 
 | Modo | Cómo |

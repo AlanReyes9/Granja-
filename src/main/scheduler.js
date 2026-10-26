@@ -43,6 +43,8 @@ export class Scheduler {
   tick() {
     const now = Date.now();
     for (const sc of this.store.get('schedules') || []) {
+      // Las tareas por intervalo cuentan desde que se abre la app o se crea la tarea, no se lanzan al instante.
+      if (sc.mode === 'interval' && !(sc.id in this.lastRuns)) { this.lastRuns[sc.id] = now; continue; }
       if (!isDue(sc, now, this.lastRuns[sc.id])) continue;
       this.lastRuns[sc.id] = now;
       const wf = (this.store.get('workflows') || []).find((w) => w.id === sc.workflowId);

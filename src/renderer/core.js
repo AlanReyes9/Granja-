@@ -36,8 +36,8 @@ export async function call(method, ...args) {
   }
 }
 
-/** Modal genérico. fields: [{key,label,type,value,options,placeholder}] -> Promise<valores|null> */
-export function modal({ title, fields = [], html = '', okText = 'Aceptar', wide = false, cancelText = 'Cancelar', onMount }) {
+/** Modal genérico. html va antes de los campos y after, después. fields: [{key,label,type,value,options,placeholder}] -> Promise<valores|null> */
+export function modal({ title, fields = [], html = '', after = '', okText = 'Aceptar', wide = false, cancelText = 'Cancelar', onMount }) {
   return new Promise((resolve) => {
     const body = fields.map((f) => {
       const v = f.value ?? '';
@@ -51,7 +51,7 @@ export function modal({ title, fields = [], html = '', okText = 'Aceptar', wide 
     }).join('');
     const el = h(`<div class="modal-bg"><div class="modal ${wide ? 'wide' : ''}">
       <header><h3>${esc(title)}</h3><button class="ghost icon-only x" title="Cerrar">${icon('x')}</button></header>
-      <div class="body">${html}${body}</div>
+      <div class="body">${html}${body}${after}</div>
       <footer>${cancelText ? `<button class="ghost cancel">${esc(cancelText)}</button>` : ''}${okText ? `<button class="primary ok">${esc(okText)}</button>` : ''}</footer>
     </div></div>`);
     const close = (val) => { el.remove(); resolve(val); };

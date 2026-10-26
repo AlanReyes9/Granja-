@@ -18,6 +18,8 @@ import { ProxyManager } from './proxies.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 if (!app.requestSingleInstanceLock()) app.quit();
+// La interfaz está en español: fechas, horas y campos de hora siguen ese formato sea cual sea el idioma del sistema.
+app.commandLine.appendSwitch('lang', 'es-ES');
 
 const userData = app.getPath('userData');
 const store = new Store(userData);
@@ -127,6 +129,8 @@ const handlers = {
   screenshot: async (serial, width = 360) => {
     const png = await devices.get(serial).screencapPng();
     const img = nativeImage.createFromBuffer(png);
+    // Una captura cortada (cable flojo, teléfono ocupado) no se puede decodificar: se descarta.
+    if (img.isEmpty()) throw new Error('Captura de pantalla incompleta');
     const size = img.getSize();
     const out = width && size.width > width ? img.resize({ width, quality: 'good' }) : img;
     return { data: `data:image/jpeg;base64,${out.toJPEG(72).toString('base64')}`, width: size.width, height: size.height };

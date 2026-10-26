@@ -109,6 +109,7 @@ export class Engine extends EventEmitter {
     const loopCounters = {};
     state.status = 'ejecutando';
     this.emit('runs', this.listRuns());
+    this.log(run.id, serial, 'info', `Inicio de "${run.workflowName}"`);
     let device;
     try {
       device = this.devices.get(serial);

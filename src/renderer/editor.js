@@ -41,10 +41,13 @@ function decorateNodes() {
   }
 }
 
+// Prefijo para que el tipo de nodo no choque con clases CSS de la interfaz (log, stop, view...).
+const nodeClass = (type) => `n-${type}`;
+
 function addNode(type, x, y) {
   const def = NODE_MAP[type];
   const data = defaultParams(type);
-  editor.addNode(type, def.inputs ?? 1, def.outputs.length, x, y, type, data, nodeHtml(type, data));
+  editor.addNode(type, def.inputs ?? 1, def.outputs.length, x, y, nodeClass(type), data, nodeHtml(type, data));
   decorateNodes();
 }
 
@@ -54,10 +57,14 @@ function emptyGraph() {
 
 function loadGraph(graph) {
   const g = structuredClone(graph || emptyGraph());
-  for (const n of Object.values(g.drawflow?.Home?.data || {})) n.html = nodeHtml(n.name, n.data);
+  for (const n of Object.values(g.drawflow?.Home?.data || {})) {
+    n.html = nodeHtml(n.name, n.data);
+    n.class = nodeClass(n.name);
+  }
   editor.clear();
   editor.import(g);
   decorateNodes();
+  fitView();
   dirty = false;
 }
 
@@ -90,6 +97,30 @@ async function confirmDiscard() {
   if (!dirty) return true;
   const v = await modal({ title: 'Hay cambios sin guardar', html: '<p>¿Descartar los cambios del flujo actual?</p>', okText: 'Descartar' });
   return !!v;
+}
+
+/** Encuadra todos los nodos en el lienzo (solo si la vista del editor está visible). */
+function fitView() {
+  const box = $('#drawflow');
+  const nodes = Object.values(editor.drawflow.drawflow.Home.data);
+  if (!nodes.length || !box.clientWidth) return;
+  const els = nodes.map((n) => document.getElementById(`node-${n.id}`)).filter(Boolean);
+  const minX = Math.min(...nodes.map((n) => n.pos_x));
+  const minY = Math.min(...nodes.map((n) => n.pos_y));
+  const maxX = Math.max(...els.map((el) => el.offsetLeft + el.offsetWidth));
+  const maxY = Math.max(...els.map((el) => el.offsetTop + el.offsetHeight));
+  const pad = 60;
+  const zoom = Math.max(0.55, Math.min(1, (box.clientWidth - pad * 2) / (maxX - minX + 60), (box.clientHeight - pad * 2) / (maxY - minY)));
+  // Drawflow escala desde el centro del lienzo (transform-origin 50% 50%), así que se compensa en el desplazamiento.
+  const pc = editor.precanvas;
+  const cx = pc.clientWidth / 2;
+  const cy = pc.clientHeight / 2;
+  const offY = Math.max(0, (box.clientHeight - pad * 2 - (maxY - minY) * zoom) / 2);
+  editor.zoom = zoom;
+  editor.zoom_last_value = zoom;
+  editor.canvas_x = pad - minX * zoom - cx * (1 - zoom);
+  editor.canvas_y = pad + offY - minY * zoom - cy * (1 - zoom);
+  pc.style.transform = `translate(${editor.canvas_x}px, ${editor.canvas_y}px) scale(${zoom})`;
 }
 
 /** Resalta en el lienzo el nodo que se está ejecutando en algún dispositivo. */
@@ -194,6 +225,7 @@ export function initEditor() {
     openWorkflow({ id: null, name: t.name, graph: t.build() });
     dirty = true;
   };
+  $('#wfFit').onclick = fitView;
   $('#wfZoomIn').onclick = () => editor.zoom_in();
   $('#wfZoomOut').onclick = () => editor.zoom_out();
   $('#wfRun').onclick = async () => {

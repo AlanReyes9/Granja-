@@ -15,7 +15,7 @@ export function renderRuns() {
     const done = entries.filter(([, d]) => ['ok', 'error', 'detenido', 'cancelado'].includes(d.status)).length;
     const pct = entries.length ? Math.round((done / entries.length) * 100) : 0;
     const el = h(`<div class="run"><div class="top">
-      <div><b>${esc(r.workflow)}</b> <span class="muted">· ${new Date(r.startedAt).toLocaleTimeString()} · ${done} de ${entries.length} · ${r.status === 'running' ? 'en curso' : esc(r.status)}</span></div>
+      <div><b>${esc(r.workflow)}</b> <span class="muted">· ${new Date(r.startedAt).toLocaleTimeString('es-ES')} · ${done} de ${entries.length} · ${r.status === 'running' ? 'en curso' : esc(r.status)}</span></div>
       ${r.status === 'running' ? `<button class="danger sm stop">${icon('square', 13)}Detener</button>` : ''}</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="chips">${entries.map(([s, d]) => `<span class="chip ${esc(d.status)}" title="${esc(d.step || '')}">${esc(deviceName(s))}: ${esc(d.status)}${d.step ? ` · ${esc(d.step)}` : ''}</span>`).join('')}</div></div>`);
@@ -25,7 +25,7 @@ export function renderRuns() {
 }
 
 function logLine(e) {
-  const t = new Date(e.time).toLocaleTimeString();
+  const t = new Date(e.time).toLocaleTimeString('es-ES');
   return `<div class="${e.level}"><span class="t">[${t}] ${esc(deviceName(e.serial))}:</span> ${esc(e.message)}</div>`;
 }
 
@@ -58,7 +58,7 @@ export async function renderHistory() {
   $('#historyBox').innerHTML = hist.length ? hist.slice(0, 200).map((x) => {
     const vals = Object.values(x.results || {});
     const ok = vals.filter((v) => v === 'ok').length;
-    return `<div class="h"><span><b>${esc(x.workflow)}</b><br><span class="muted">${new Date(x.startedAt).toLocaleString()} · ${esc(x.source)}</span></span><span style="text-align:right"><span class="chip ${ok === vals.length ? 'ok' : 'error'}">${ok} de ${vals.length}</span><br><span class="muted">${esc(x.status)}</span></span></div>`;
+    return `<div class="h"><span><b>${esc(x.workflow)}</b><br><span class="muted">${new Date(x.startedAt).toLocaleString('es-ES')} · ${esc(x.source)}</span></span><span style="text-align:right"><span class="chip ${ok === vals.length ? 'ok' : 'error'}">${ok} de ${vals.length}</span><br><span class="muted">${esc(x.status)}</span></span></div>`;
   }).join('') : '<p class="empty-line">Sin historial todavía.</p>';
 }
 
@@ -92,14 +92,14 @@ async function editSchedule(sc = {}) {
       { key: 'name', label: 'Nombre', value: sc.name || 'Tarea diaria' },
       { key: 'workflowId', label: 'Flujo', type: 'select', options: state.workflows.map((w) => [w.id, w.name]), value: sc.workflowId },
       { key: 'mode', label: 'Cuándo', type: 'select', options: [['daily', 'A una hora fija'], ['interval', 'Cada X minutos']], value: sc.mode || 'daily' },
-      { key: 'time', label: 'Hora (HH:MM) — modo hora fija', type: 'time', value: sc.time || '09:00' },
-      { key: 'everyMinutes', label: 'Cada cuántos minutos — modo intervalo', type: 'number', value: sc.everyMinutes || 60 },
+      { key: 'time', label: 'Hora (si es a hora fija)', type: 'time', value: sc.time || '09:00' },
+      { key: 'everyMinutes', label: 'Cada cuántos minutos (si es por intervalo)', type: 'number', value: sc.everyMinutes || 60 },
       { key: 'target', label: 'Dispositivos', type: 'select', value: sc.target || 'all',
         options: [['all', 'Todos los conectados'], ['group', 'Un grupo'], ['list', `Los seleccionados ahora (${selectedSerials().length})`]] },
       { key: 'group', label: 'Grupo (si eliges "Un grupo")', type: 'select', options: ['', ...groups], value: sc.group || '' },
       { key: 'enabled', label: 'Activa', type: 'checkbox', value: sc.enabled ?? true },
     ],
-    html: `<label>Días (modo hora fija)<div class="days">${DAYS.map((d, i) => `<label class="chk"><input type="checkbox" data-k="day${i}" ${(sc.days?.length ? sc.days : [0, 1, 2, 3, 4, 5, 6]).includes(i) ? 'checked' : ''}/> ${d}</label>`).join('')}</div></label>`,
+    after: `<label>Días (si es a hora fija)<div class="days">${DAYS.map((d, i) => `<label class="chk"><input type="checkbox" data-k="day${i}" ${(sc.days?.length ? sc.days : [0, 1, 2, 3, 4, 5, 6]).includes(i) ? 'checked' : ''}/> ${d}</label>`).join('')}</div></label>`,
     okText: 'Guardar',
   });
   if (!v) return;
@@ -117,8 +117,8 @@ export function renderTables() {
   for (const t of state.tables) {
     const el = h(`<div class="box"><div class="row"><span class="line">${icon('table', 15)}<b>${esc(t.name)}</b></span><span class="chip">${t.count} filas</span></div>
       <span class="muted">Columnas: ${t.columns.map((c) => `<code>{${esc(c)}}</code>`).join(' ')}</span>
-      <div class="actions"><button class="ghost sm view">${icon('eye', 13)}Ver</button><button class="ghost sm re">${icon('upload', 13)}Reemplazar</button><button class="ghost sm danger del">${icon('trash', 13)}Eliminar</button></div></div>`);
-    el.querySelector('.view').onclick = async () => {
+      <div class="actions"><button class="ghost sm btn-view">${icon('eye', 13)}Ver</button><button class="ghost sm re">${icon('upload', 13)}Reemplazar</button><button class="ghost sm danger del">${icon('trash', 13)}Eliminar</button></div></div>`);
+    el.querySelector('.btn-view').onclick = async () => {
       const p = await call('previewTable', t.name);
       $('#tblPreview').innerHTML = `<table><tr>${p.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr>${p.rows.map((r) => `<tr>${p.columns.map((_, i) => `<td>${esc(r[i])}</td>`).join('')}</tr>`).join('')}</table>${p.count > 50 ? `<p class="muted">y ${p.count - 50} filas más</p>` : ''}`;
     };
