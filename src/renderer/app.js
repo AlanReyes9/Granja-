@@ -6,6 +6,7 @@ import { initViews, renderRuns, appendLog, renderSchedules, renderTables, render
 import { initProxies, renderProxies } from './proxies.js';
 import { openInspector } from './inspector.js';
 import { icon } from './icons.js';
+import { ensureLicensed, watchLicense } from './license.js';
 
 export function renderSideStatus() {
   const ready = state.devices.filter((d) => d.state === 'device').length;
@@ -54,6 +55,8 @@ async function main() {
     if (e.ctrlKey && e.key.toLowerCase() === 'b') { e.preventDefault(); $('#sideToggle').click(); }
   });
   $('#btnInspector').onclick = () => openInspector();
+  // Sin licencia válida no se carga nada más (el proceso principal también lo impide).
+  watchLicense(await ensureLicensed());
   await reloadState();
   $$('nav button').forEach((b) => (b.onclick = () => switchView(b.dataset.view)));
   window.addEventListener('view', (e) => {

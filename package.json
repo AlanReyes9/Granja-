@@ -11,7 +11,8 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "dist": "electron-builder --win",
-    "dist:dir": "electron-builder --win --dir"
+    "dist:dir": "electron-builder --win --dir",
+    "licencias": "node tools/licencias.mjs"
   },
   "dependencies": {
     "@yume-chan/adb": "^2.6.4",
@@ -69,6 +70,11 @@
     },
     "portable": {
       "artifactName": "NexusFarmer-Portable-${version}.${ext}"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false
     }
   }
 }

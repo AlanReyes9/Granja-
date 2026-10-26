@@ -14,6 +14,7 @@ import { ApiServer } from './api.js';
 import { Tools } from './tools.js';
 import { parseCsv, toCsv } from './csv.js';
 import { ProxyManager } from './proxies.js';
+import { LicenseManager } from './licensing/license.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -62,6 +63,15 @@ const engine = new Engine({ devices, store, notifier, screenshotsDir, proxies })
 const scheduler = new Scheduler({ store, engine, devices, onEvent: (m) => toast(m) });
 const api = new ApiServer({ store, devices, engine, proxies });
 const health = {}; // serial -> details
+
+// Licencia. Solo en desarrollo (app sin empaquetar) se pueden usar otra clave pública y otro servidor
+// mediante variables de entorno, para pruebas; en el .exe siempre se usan las de licensing/config.js.
+const devOverride = !app.isPackaged ? {
+  ...(process.env.NEXUS_LICENSE_PUBLIC_KEY ? { publicKey: process.env.NEXUS_LICENSE_PUBLIC_KEY } : {}),
+  ...(process.env.NEXUS_LICENSE_SERVER ? { serverUrl: process.env.NEXUS_LICENSE_SERVER } : {}),
+} : {};
+const license = new LicenseManager({ dir: userData, appVersion: app.getVersion(), ...devOverride });
+let servicesRunning = false;
 const alerted = new Set();
 
 let win;
@@ -367,20 +377,62 @@ const handlers = {
   openExternal: (url) => shell.openExternal(url),
 };
 
+// Funciones disponibles sin licencia: solo las de la pantalla de activación.
+const licenseHandlers = {
+  licenseStatus: () => license.status(),
+  licenseActivateOnline: (serial) => license.activateOnline(serial),
+  licenseActivateOffline: (key) => license.activateOffline(key),
+  licenseRevalidate: () => license.revalidate(),
+  licenseDeactivate: () => license.deactivate(),
+  openExternal: (url) => shell.openExternal(url),
+};
+
 ipcMain.handle('call', async (_e, method, args) => {
+  if (licenseHandlers[method]) return licenseHandlers[method](...(args || []));
   const fn = handlers[method];
   if (!fn) throw new Error(`Método desconocido: ${method}`);
+  if (!license.isActive()) throw new Error('Nexus Farmer no está activado');
   return fn(...(args || []));
 });
 
-app.whenReady().then(async () => {
-  createWindow();
+let healthTimer;
+async function startServices() {
+  if (servicesRunning) return;
+  servicesRunning = true;
   await adb.startServer();
   devices.start();
   scheduler.start();
   api.restart();
-  setInterval(healthTick, 60000);
+  healthTimer = setInterval(healthTick, 60000);
   setTimeout(healthTick, 5000);
+}
+
+function stopServices() {
+  if (!servicesRunning) return;
+  servicesRunning = false;
+  engine.stopAll();
+  devices.stop();
+  scheduler.stop();
+  api.close();
+  clearInterval(healthTimer);
+}
+
+license.on('changed', (st) => {
+  emit('license', st);
+  if (st.active) startServices(); else stopServices();
+});
+
+app.whenReady().then(async () => {
+  createWindow();
+  // Una licencia en línea se revalida al abrir (sin conexión sigue valiendo durante el periodo de gracia).
+  await license.revalidate().catch(() => {});
+  license.startAutoRevalidate();
+  if (license.isActive()) await startServices();
+  // Comprobación periódica de caducidad mientras la app está abierta.
+  setInterval(() => {
+    const st = license.status();
+    if (!st.active && servicesRunning) { stopServices(); emit('license', st); }
+  }, 10 * 60 * 1000);
 });
 
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });

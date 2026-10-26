@@ -1,0 +1,5 @@
+# Configuración mínima para desplegar con la CLI de Supabase.
+# La app no envía credenciales de Supabase: la función se protege sola (seriales imposibles de adivinar
+# y licencias firmadas), así que no se exige JWT.
+[functions.licencias]
+verify_jwt = false

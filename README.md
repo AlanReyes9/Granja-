@@ -21,7 +21,7 @@ Capturas de la propia app con teléfonos de demostración.
 |---|---|
 | ![Centro de control](docs/capturas/01-dispositivos.png) Centro de control | ![Vista grande](docs/capturas/03-vista-grande.png) Doble clic: vista grande |
 | ![Inspector](docs/capturas/04b-inspector.png) Inspector de pantalla | ![Tema oscuro](docs/capturas/18-tema-oscuro.png) Tema oscuro y filtro por grupo |
-| ![Barras contraídas](docs/capturas/19-barras-contraidas.png) Menú y panel contraídos | |
+| ![Barras contraídas](docs/capturas/19-barras-contraidas.png) Menú y panel contraídos | ![Activación](docs/capturas/20-activacion.png) Activación de licencia |
 | ![Proxys](docs/capturas/07-proxys.png) Proxys y asignación por teléfono | ![Dispositivos con proxy](docs/capturas/08-dispositivos-con-proxy.png) Proxy visible en cada tarjeta |
 | ![Editor](docs/capturas/11-flujo-login-con-tabla.png) Editor de flujos por nodos | ![Ejecuciones](docs/capturas/13-ejecuciones.png) Ejecuciones e historial |
 | ![Programador](docs/capturas/14-programador.png) Programador | ![Ajustes](docs/capturas/17-ajustes.png) Ajustes |
@@ -98,6 +98,15 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - Motor **USB directo/OTG** sin `adb.exe`.
 - Escaneo de la red, emparejamiento inalámbrico y USB→Wi-Fi automático.
 - Registro en vivo con filtros e **historial exportable a CSV**.
+
+## Licencias
+
+La app necesita una licencia para funcionar. Hay dos modos, y se pueden usar a la vez:
+
+- **Seriales en línea:** el servidor (Supabase) ata cada serial al primer PC que lo activa. Desde ahí puedes revocarlos, renovarlos o pasarlos a otro PC.
+- **Claves sin conexión:** las generas para el ID de equipo que te envía el cliente.
+
+Las licencias pueden caducar o ser permanentes. Están firmadas con tu clave privada, así que nadie puede fabricarlas. Todos los pasos están en [docs/LICENCIAS.md](docs/LICENCIAS.md).
 
 ## Escribir texto con acentos o emojis
 

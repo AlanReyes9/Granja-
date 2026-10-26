@@ -1,6 +1,7 @@
 // Vistas secundarias: ejecuciones/registro, programador, tablas de datos y ajustes.
 import { state, $, $$, esc, h, call, toast, modal, deviceName, reloadState, icon, hydrateIcons } from './core.js';
 import { selectedSerials } from './devices.js';
+import { licenseFieldset } from './license.js';
 
 // ---------- Ejecuciones ----------
 const logs = [];
@@ -177,6 +178,7 @@ export function renderSettings() {
     <span>ADB</span><span>${esc(state.adbVersion || 'no encontrado')}</span><span>Ruta ADB</span><span>${esc(state.adbPath)}</span>
     <span>scrcpy</span><span>${esc(state.scrcpy || 'no instalado')}</span><span>Capturas</span><span>${esc(state.screenshotsDir)}</span></div></fieldset>`;
 
+  $('#settingsForm').prepend(licenseFieldset());
   hydrateIcons($('#settingsForm'));
   $$('#settingsForm .pick').forEach((b) => (b.onclick = async () => {
     const [f] = await call('pickFiles', { filters: [{ name: 'Ejecutable', extensions: ['exe', '*'] }] });
