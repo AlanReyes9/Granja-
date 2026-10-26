@@ -33,6 +33,7 @@ node tools/licencias.mjs claves
 2. En **SQL Editor**, ejecuta en este orden el contenido de:
    - `supabase/migrations/20261026000000_licencias.sql` (tabla de seriales)
    - `supabase/migrations/20261027000000_panel_admin.sql` (clientes, administradores y permisos)
+   - `supabase/migrations/20261028000000_sin_anon.sql` (quita los permisos por defecto de la clave pública)
 3. Despliega la función de activación con la [CLI de Supabase](https://supabase.com/docs/guides/cli):
 
    ```bash

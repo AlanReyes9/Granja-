@@ -3,7 +3,7 @@
 //   Con ella la app comprueba que un serial o una clave la firmaste tú; no sirve para crear licencias.
 // SERVER_URL: dirección de la función de activación en línea (Supabase). Vacía = solo claves sin conexión.
 export const PUBLIC_KEY = 'MCowBQYDK2VwAyEAQE10uHZqproSX61lnZN6xSsAl9MpZvpJnfKODr0hqwc=';
-export const SERVER_URL = '';
+export const SERVER_URL = 'https://hiywklnmuvqyvtnybsie.supabase.co/functions/v1/licencias';
 // Claves sin conexión (generadas para un ID de equipo). Desactivadas: solo se aceptan seriales en línea,
 // que se pueden revocar, renovar y liberar desde el panel. Ponlo a true solo si quieres volver a usarlas.
 export const OFFLINE_KEYS = false;
