@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { Engine, compileDrawflow } from '../src/main/automation/engine.js';
 import { renderTemplate, resolveCoord, parseUiDump, findNode, escapeInputText } from '../src/main/automation/actions.js';
 import { parseDevicesOutput } from '../src/main/adb/exe.js';
@@ -56,13 +58,19 @@ test('coordenadas en % y px', () => {
   assert.throws(() => resolveCoord('abc', 1080));
 });
 
-test('escape de input text: el teléfono recibe exactamente el texto', async () => {
+// El texto lo interpreta el sh de Android; en Windows se usa el sh de Git para Windows.
+const posixSh = process.platform === 'win32'
+  ? [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean)
+    .map((d) => path.join(d, 'Git', 'bin', 'sh.exe')).find((f) => fs.existsSync(f))
+  : '/bin/sh';
+
+test('escape de input text: el teléfono recibe exactamente el texto', { skip: posixSh ? false : 'no hay un sh POSIX en este equipo' }, async () => {
   assert.equal(escapeInputText('hola mundo'), 'hola%smundo');
   const { shellQuote } = await import('../src/main/devices.js');
   const { execFileSync } = await import('node:child_process');
   for (const text of ['Clave1000!', "it's a&b|c;d$e`f\\g\"h(i)*?#~"]) {
     const cmd = `printf %s ${shellQuote(escapeInputText(text))}`;
-    const got = execFileSync('/bin/sh', ['-c', cmd]).toString().replace(/%s/g, ' ');
+    const got = execFileSync(posixSh, ['-c', cmd]).toString().replace(/%s/g, ' ');
     assert.equal(got, text);
   }
 });
