@@ -20,12 +20,13 @@ export const DEFAULT_SETTINGS = {
   alertBatteryBelow: 15,
   alertTempAbove: 45,
   alertOnDisconnect: true,
+  autoApplyProxy: true,
 };
 
 export class Store {
   constructor(dir) {
     this.file = path.join(dir, 'granja-data.json');
-    this.data = { settings: { ...DEFAULT_SETTINGS }, workflows: [], schedules: [], deviceMeta: {}, tables: [], history: [] };
+    this.data = { settings: { ...DEFAULT_SETTINGS }, workflows: [], schedules: [], deviceMeta: {}, tables: [], history: [], proxies: [] };
     try {
       const loaded = JSON.parse(fs.readFileSync(this.file, 'utf8'));
       this.data = { ...this.data, ...loaded, settings: { ...DEFAULT_SETTINGS, ...(loaded.settings || {}) } };

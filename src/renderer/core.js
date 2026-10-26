@@ -1,7 +1,10 @@
 // Estado global y utilidades compartidas de la interfaz (modales, avisos, llamadas al proceso principal).
+import { icon, hydrateIcons } from './icons.js';
+
+export { icon, hydrateIcons };
 export const api = window.granja;
 export const state = {
-  devices: [], settings: {}, workflows: [], schedules: [], deviceMeta: {}, tables: [], runs: [], health: {},
+  devices: [], settings: {}, workflows: [], schedules: [], deviceMeta: {}, tables: [], runs: [], health: {}, proxies: [],
   selected: new Set(),
   view: 'devices',
 };
@@ -17,7 +20,8 @@ export function h(html) {
 }
 
 export function toast(message, level = 'info', ms = 4500) {
-  const el = h(`<div class="toast ${level}">${esc(message)}</div>`);
+  const ic = { info: 'check', warn: 'alert', error: 'x-circle' }[level] || 'info';
+  const el = h(`<div class="toast ${level}">${icon(ic)}<span>${esc(message)}</span></div>`);
   $('#toasts').appendChild(el);
   setTimeout(() => el.remove(), ms);
 }
@@ -32,7 +36,7 @@ export async function call(method, ...args) {
   }
 }
 
-/** Modal genérico. fields: [{key,label,type,value,options,placeholder}] → Promise<valores|null> */
+/** Modal genérico. fields: [{key,label,type,value,options,placeholder}] -> Promise<valores|null> */
 export function modal({ title, fields = [], html = '', okText = 'Aceptar', wide = false, cancelText = 'Cancelar', onMount }) {
   return new Promise((resolve) => {
     const body = fields.map((f) => {
@@ -46,7 +50,7 @@ export function modal({ title, fields = [], html = '', okText = 'Aceptar', wide 
       return `<label>${esc(f.label)}<input data-k="${f.key}" type="${f.type || 'text'}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}"/></label>`;
     }).join('');
     const el = h(`<div class="modal-bg"><div class="modal ${wide ? 'wide' : ''}">
-      <header><h3>${esc(title)}</h3><button class="ghost x">✕</button></header>
+      <header><h3>${esc(title)}</h3><button class="ghost icon-only x" title="Cerrar">${icon('x')}</button></header>
       <div class="body">${html}${body}</div>
       <footer>${cancelText ? `<button class="ghost cancel">${esc(cancelText)}</button>` : ''}${okText ? `<button class="primary ok">${esc(okText)}</button>` : ''}</footer>
     </div></div>`);
@@ -62,16 +66,17 @@ export function modal({ title, fields = [], html = '', okText = 'Aceptar', wide 
       if (e.key === 'Escape') close(null);
       if (e.key === 'Enter' && e.target.tagName === 'INPUT') el.querySelector('.ok')?.click();
     });
+    hydrateIcons(el);
     $('#modalRoot').appendChild(el);
-    el.querySelector('input,textarea,select')?.focus();
+    el.querySelector('.body input:not([type=checkbox]),.body textarea,.body select')?.focus();
     onMount?.(el, close);
   });
 }
 
 export function showResults(title, results) {
-  const html = `<div class="results">${results.map((r) => `<div class="${r.ok ? '' : 'fail'}"><b>${esc(deviceName(r.serial))}</b>  ${r.ok ? '✔' : '✖'}\n${esc(r.out || '')}</div>`).join('')}</div>`;
+  const html = `<div class="results">${results.map((r) => `<div class="${r.ok ? '' : 'fail'}"><b>${esc(deviceName(r.serial))}</b> · ${r.ok ? 'correcto' : 'error'}\n${esc(r.out || '')}</div>`).join('')}</div>`;
   const ok = results.filter((r) => r.ok).length;
-  return modal({ title: `${title} — ${ok}/${results.length} correctos`, html, okText: 'Cerrar', cancelText: '', wide: true });
+  return modal({ title: `${title}: ${ok} de ${results.length} correctos`, html, okText: 'Cerrar', cancelText: '', wide: true });
 }
 
 export function deviceName(serial) {

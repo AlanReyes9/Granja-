@@ -10,14 +10,26 @@
 </head>
 <body>
   <aside class="sidebar">
-    <div class="brand"><span class="logo">🌱</span><div><b>Granja</b><small>Farm Manager</small></div></div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="var(--accent)"/>
+        <rect x="11" y="6" width="10" height="17" rx="2.2" fill="none" stroke="#04140d" stroke-width="2"/>
+        <path d="M8 26.5h16" stroke="#04140d" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="16" cy="19.5" r="1.3" fill="#04140d"/>
+      </svg>
+      <div><b>Granja</b><small>Farm Manager</small></div>
+    </div>
     <nav>
-      <button data-view="devices" class="active">📱 <span>Dispositivos</span></button>
-      <button data-view="editor">🧩 <span>Automatización</span></button>
-      <button data-view="runs">▶️ <span>Ejecuciones</span></button>
-      <button data-view="schedules">⏰ <span>Programador</span></button>
-      <button data-view="data">📊 <span>Datos</span></button>
-      <button data-view="settings">⚙️ <span>Ajustes</span></button>
+      <div class="nav-label">Granja</div>
+      <button data-view="devices" class="active"><i data-icon="grid"></i><span>Dispositivos</span><em id="navDevCount"></em></button>
+      <button data-view="proxies"><i data-icon="shield"></i><span>Proxys</span><em id="navProxyCount"></em></button>
+      <div class="nav-label">Automatización</div>
+      <button data-view="editor"><i data-icon="workflow"></i><span>Flujos</span></button>
+      <button data-view="runs"><i data-icon="activity"></i><span>Ejecuciones</span><em id="navRunCount"></em></button>
+      <button data-view="schedules"><i data-icon="calendar"></i><span>Programador</span></button>
+      <button data-view="data"><i data-icon="table"></i><span>Datos</span></button>
+      <div class="nav-spacer"></div>
+      <button data-view="settings"><i data-icon="settings"></i><span>Ajustes</span></button>
     </nav>
     <div class="side-status" id="sideStatus"></div>
   </aside>
@@ -25,87 +37,160 @@
   <main>
     <!-- ================= DISPOSITIVOS ================= -->
     <section id="view-devices" class="view active">
-      <header class="toolbar">
+      <header class="page-head">
+        <div><h1>Dispositivos</h1><p class="sub" id="devSummary"></p></div>
         <div class="group">
-          <input id="devSearch" placeholder="Buscar nombre, serie, grupo…" />
+          <button id="btnConnect" class="primary"><i data-icon="plug"></i>Conectar</button>
+        </div>
+      </header>
+      <div class="toolbar">
+        <div class="group">
+          <div class="search"><i data-icon="search"></i><input id="devSearch" placeholder="Buscar por nombre, serie o grupo" /></div>
           <select id="devGroupFilter"><option value="">Todos los grupos</option></select>
-          <button id="btnSelectAll" class="ghost">Seleccionar todo</button>
-          <button id="btnSelectNone" class="ghost">Ninguno</button>
+          <div class="seg">
+            <button id="btnSelectAll" title="Seleccionar todos"><i data-icon="select"></i>Todos</button>
+            <button id="btnSelectNone" title="Quitar selección"><i data-icon="deselect"></i>Ninguno</button>
+          </div>
           <span class="count" id="selCount">0 seleccionados</span>
         </div>
         <div class="group">
-          <label class="switch" title="Lo que hagas en una pantalla se replica en todos los seleccionados"><input type="checkbox" id="syncControl" /><span>Control sincronizado</span></label>
-          <label class="switch"><input type="checkbox" id="liveView" checked /><span>Vista en vivo</span></label>
-          <input type="range" id="thumbSize" min="140" max="360" value="200" title="Tamaño de miniaturas" />
-          <button id="btnConnect">🔌 Conectar</button>
+          <label class="toggle" title="Lo que hagas en una pantalla se replica en todos los seleccionados"><input type="checkbox" id="syncControl" /><span class="track"></span>Control sincronizado</label>
+          <label class="toggle"><input type="checkbox" id="liveView" checked /><span class="track"></span>En vivo</label>
+          <div class="size-ctl" title="Tamaño de las pantallas">
+            <i data-icon="phone" data-size="12"></i>
+            <input type="range" id="thumbSize" min="90" max="320" value="120" />
+            <i data-icon="phone" data-size="17"></i>
+          </div>
         </div>
-      </header>
-      <div class="actionbar">
-        <button data-act="apk">📦 Instalar APK</button>
-        <button data-act="push">📤 Enviar archivos</button>
-        <button data-act="shell">💻 Shell</button>
-        <button data-act="text">⌨ Texto</button>
-        <button data-act="url">🌐 Abrir URL</button>
-        <button data-act="run">▶ Ejecutar flujo</button>
-        <button data-act="proxy">🛡 Proxy</button>
-        <button data-act="rename">🏷 Nombrar / agrupar</button>
-        <button data-act="wifi">📶 USB → Wi-Fi</button>
-        <button data-act="home">⌂ Inicio</button>
-        <button data-act="back">↩ Atrás</button>
-        <button data-act="wake">🔓 Despertar</button>
-        <button data-act="reboot" class="danger">⟲ Reiniciar</button>
       </div>
-      <div id="dropHint" class="drop-hint">Suelta APKs para instalar o archivos para enviar a los dispositivos seleccionados</div>
+      <div class="actionbar">
+        <div class="seg">
+          <button data-act="apk"><i data-icon="package"></i>Instalar APK</button>
+          <button data-act="push"><i data-icon="upload"></i>Enviar archivos</button>
+        </div>
+        <div class="seg">
+          <button data-act="shell"><i data-icon="terminal"></i>Shell</button>
+          <button data-act="text"><i data-icon="keyboard"></i>Texto</button>
+          <button data-act="url"><i data-icon="globe"></i>Abrir URL</button>
+        </div>
+        <div class="seg">
+          <button data-act="run"><i data-icon="play"></i>Ejecutar flujo</button>
+        </div>
+        <div class="seg">
+          <button data-act="proxy"><i data-icon="shield"></i>Asignar proxys</button>
+          <button data-act="rename"><i data-icon="tag"></i>Nombrar / agrupar</button>
+          <button data-act="wifi"><i data-icon="wifi"></i>USB a Wi-Fi</button>
+        </div>
+        <div class="seg">
+          <button data-act="home" title="Inicio"><i data-icon="home"></i></button>
+          <button data-act="back" title="Atrás"><i data-icon="back"></i></button>
+          <button data-act="wake" title="Despertar y desbloquear"><i data-icon="unlock"></i></button>
+          <button data-act="reboot" title="Reiniciar" class="danger"><i data-icon="power"></i></button>
+        </div>
+      </div>
+      <div id="dropHint" class="drop-hint"><div><i data-icon="upload" data-size="28"></i><p>Suelta APKs para instalarlos o archivos para enviarlos a los dispositivos seleccionados</p></div></div>
       <div id="deviceGrid" class="grid"></div>
       <div id="emptyDevices" class="empty">
+        <div class="empty-ic"><i data-icon="phone" data-size="28"></i></div>
         <h2>No hay dispositivos conectados</h2>
-        <p>Conecta teléfonos por USB (o hub OTG) con <b>Depuración USB</b> activada, o pulsa <b>🔌 Conectar</b> para Wi-Fi.</p>
-        <p class="muted" id="adbHint"></p>
+        <p>Conecta teléfonos por USB o mediante un hub OTG con la <b>depuración USB</b> activada, o usa <b>Conectar</b> para añadirlos por Wi-Fi.</p>
+        <p class="muted mono" id="adbHint"></p>
+      </div>
+    </section>
+
+    <!-- ================= PROXYS ================= -->
+    <section id="view-proxies" class="view">
+      <header class="page-head">
+        <div><h1>Proxys</h1><p class="sub" id="proxySummary"></p></div>
+        <div class="group">
+          <button id="pxTest"><i data-icon="activity"></i>Probar todos</button>
+          <button id="pxApplyAll"><i data-icon="check"></i>Aplicar asignados</button>
+          <button id="pxAssign" class="primary"><i data-icon="shuffle"></i>Asignar a dispositivos</button>
+        </div>
+      </header>
+      <div class="px-layout">
+        <div class="panel">
+          <div class="panel-head"><h3>Lista de proxys</h3></div>
+          <div class="panel-body">
+            <textarea id="pxInput" class="mono" spellcheck="false" placeholder="Uno por línea, por ejemplo:&#10;192.168.1.10:8080&#10;45.12.30.4:3128:usuario:clave&#10;http://usuario:clave@proxy.ejemplo.com:8000"></textarea>
+            <div class="group">
+              <button id="pxReplace" class="primary"><i data-icon="save"></i>Guardar lista</button>
+              <button id="pxAppend"><i data-icon="plus"></i>Añadir a la lista</button>
+            </div>
+            <p class="note"><i data-icon="info" data-size="14"></i><span>Android aplica el proxy HTTP global del sistema (<code>settings put global http_proxy</code>), que no admite usuario y contraseña. Para proxys con autenticación, autoriza la IP de salida de la granja en tu proveedor.</span></p>
+          </div>
+        </div>
+        <div class="panel grow">
+          <div class="panel-head">
+            <h3>Proxys guardados</h3>
+            <div class="group">
+              <div class="search sm"><i data-icon="search" data-size="14"></i><input id="pxFilter" placeholder="Filtrar" /></div>
+              <button id="pxDelete" class="ghost danger"><i data-icon="trash"></i>Eliminar seleccionados</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table class="data" id="pxTable"></table></div>
+        </div>
+        <div class="panel grow">
+          <div class="panel-head">
+            <h3>Asignación por dispositivo</h3>
+            <div class="group">
+              <button id="pxUnassign" class="ghost"><i data-icon="x"></i>Quitar asignación a seleccionados</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table class="data" id="pxDevTable"></table></div>
+        </div>
       </div>
     </section>
 
     <!-- ================= EDITOR ================= -->
     <section id="view-editor" class="view">
-      <header class="toolbar">
+      <header class="page-head">
         <div class="group">
-          <select id="wfSelect"></select>
-          <input id="wfName" placeholder="Nombre del flujo" />
-          <button id="wfNew" class="ghost">＋ Nuevo</button>
-          <button id="wfTemplate" class="ghost">📚 Plantillas</button>
-          <button id="wfSave">💾 Guardar</button>
-          <button id="wfDuplicate" class="ghost">⧉ Duplicar</button>
-          <button id="wfDelete" class="ghost danger">🗑</button>
+          <select id="wfSelect" class="wf-select"></select>
+          <input id="wfName" class="wf-name" placeholder="Nombre del flujo" />
         </div>
         <div class="group">
-          <button id="wfImport" class="ghost">⬆ Importar</button>
-          <button id="wfExport" class="ghost">⬇ Exportar</button>
-          <button id="wfZoomOut" class="ghost">−</button>
-          <button id="wfZoomIn" class="ghost">＋</button>
-          <button id="wfRun" class="primary">▶ Ejecutar en seleccionados</button>
+          <div class="seg">
+            <button id="wfNew" title="Nuevo flujo"><i data-icon="plus"></i>Nuevo</button>
+            <button id="wfTemplate" title="Plantillas"><i data-icon="layers"></i>Plantillas</button>
+            <button id="wfDuplicate" title="Duplicar"><i data-icon="copy"></i></button>
+            <button id="wfImport" title="Importar"><i data-icon="upload"></i></button>
+            <button id="wfExport" title="Exportar"><i data-icon="download"></i></button>
+            <button id="wfDelete" title="Eliminar" class="danger"><i data-icon="trash"></i></button>
+          </div>
+          <div class="seg">
+            <button id="wfZoomOut" title="Alejar"><i data-icon="zoom-out"></i></button>
+            <button id="wfZoomIn" title="Acercar"><i data-icon="zoom-in"></i></button>
+          </div>
+          <button id="wfSave"><i data-icon="save"></i>Guardar</button>
+          <button id="wfRun" class="primary"><i data-icon="play"></i><span>Ejecutar</span></button>
         </div>
       </header>
       <div class="editor-wrap">
-        <div class="palette" id="palette"></div>
+        <div class="palette">
+          <div class="search sm"><i data-icon="search" data-size="14"></i><input id="palSearch" placeholder="Buscar nodo" /></div>
+          <div id="palette"></div>
+        </div>
         <div id="drawflow"></div>
       </div>
     </section>
 
     <!-- ================= EJECUCIONES ================= -->
     <section id="view-runs" class="view">
-      <header class="toolbar">
-        <div class="group"><h2>Ejecuciones activas</h2></div>
-        <div class="group"><button id="btnStopAll" class="danger">⏹ Detener todo</button></div>
+      <header class="page-head">
+        <div><h1>Ejecuciones</h1><p class="sub">Flujos en curso, registro en vivo e historial</p></div>
+        <div class="group"><button id="btnStopAll" class="danger"><i data-icon="square"></i>Detener todo</button></div>
       </header>
       <div id="runsList" class="runs"></div>
       <div class="split">
         <div class="panel">
           <div class="panel-head"><h3>Registro en vivo</h3>
-            <div class="group"><select id="logLevel"><option value="">Todo</option><option value="error">Errores</option><option value="warn">Avisos</option></select>
-            <input id="logFilter" placeholder="Filtrar…" /><button id="logClear" class="ghost">Limpiar</button></div></div>
-          <pre id="logBox" class="log"></pre>
+            <div class="group"><select id="logLevel"><option value="">Todo</option><option value="error">Errores</option><option value="warn">Avisos y errores</option></select>
+            <div class="search sm"><i data-icon="search" data-size="14"></i><input id="logFilter" placeholder="Filtrar" /></div><button id="logClear" class="ghost">Limpiar</button></div></div>
+          <div id="logBox" class="log mono"></div>
         </div>
         <div class="panel">
-          <div class="panel-head"><h3>Historial</h3><button id="histExport" class="ghost">⬇ CSV</button></div>
+          <div class="panel-head"><h3>Historial</h3><button id="histExport" class="ghost"><i data-icon="download"></i>Exportar CSV</button></div>
           <div id="historyBox" class="history"></div>
         </div>
       </div>
@@ -113,21 +198,20 @@
 
     <!-- ================= PROGRAMADOR ================= -->
     <section id="view-schedules" class="view">
-      <header class="toolbar"><div class="group"><h2>Tareas programadas</h2></div><div class="group"><button id="schNew" class="primary">＋ Nueva tarea</button></div></header>
+      <header class="page-head"><div><h1>Programador</h1><p class="sub">Ejecuta flujos automáticamente por intervalo u hora fija</p></div><div class="group"><button id="schNew" class="primary"><i data-icon="plus"></i>Nueva tarea</button></div></header>
       <div id="schedList" class="cards"></div>
     </section>
 
     <!-- ================= DATOS ================= -->
     <section id="view-data" class="view">
-      <header class="toolbar"><div class="group"><h2>Tablas de datos</h2></div><div class="group"><button id="tblImport" class="primary">⬆ Importar CSV</button></div></header>
-      <p class="muted pad">Importa un CSV (por ejemplo usuario,clave,bio). El nodo <b>Leer fila de tabla</b> carga cada columna como variable <code>{usuario}</code>, <code>{clave}</code>… asignando una fila distinta a cada dispositivo.</p>
+      <header class="page-head"><div><h1>Datos</h1><p class="sub">Tablas CSV para usar en los flujos: cada columna es una variable, como <code>{usuario}</code> o <code>{clave}</code></p></div><div class="group"><button id="tblImport" class="primary"><i data-icon="upload"></i>Importar CSV</button></div></header>
       <div id="tblList" class="cards"></div>
       <div id="tblPreview" class="table-preview"></div>
     </section>
 
     <!-- ================= AJUSTES ================= -->
     <section id="view-settings" class="view">
-      <header class="toolbar"><div class="group"><h2>Ajustes</h2></div><div class="group"><button id="setSave" class="primary">💾 Guardar ajustes</button></div></header>
+      <header class="page-head"><div><h1>Ajustes</h1><p class="sub">Conexión, rendimiento, alertas y API</p></div><div class="group"><button id="setSave" class="primary"><i data-icon="save"></i>Guardar ajustes</button></div></header>
       <div id="settingsForm" class="settings"></div>
     </section>
   </main>

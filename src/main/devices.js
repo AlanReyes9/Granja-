@@ -192,7 +192,7 @@ export class DeviceManager extends EventEmitter {
     const addr = `${info.ip}:${port}`;
     const out = await this.adb.connect(addr);
     this.wifiKnown.add(addr);
-    return `${addr} → ${out.trim()}`;
+    return `${addr}: ${out.trim()}`;
   }
 
   async connectWifi(addr) {

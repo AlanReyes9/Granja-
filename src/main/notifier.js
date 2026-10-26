@@ -11,7 +11,7 @@ export class Notifier {
       jobs.push(fetch(`https://api.telegram.org/bot${s.telegramToken}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: s.telegramChatId, text: `🌱 Granja: ${message}` }),
+        body: JSON.stringify({ chat_id: s.telegramChatId, text: `Granja: ${message}` }),
       }));
     }
     if (s.webhookUrl) {

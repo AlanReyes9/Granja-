@@ -1,5 +1,6 @@
 // Vista de dispositivos: cuadrícula en vivo, control táctil (individual o sincronizado) y acciones masivas.
-import { state, api, $, $$, esc, h, call, toast, modal, showResults, deviceName } from './core.js';
+import { state, api, $, $$, esc, h, call, toast, modal, showResults, deviceName, icon } from './core.js';
+import { openAssignModal } from './proxies.js';
 
 const cards = new Map(); // serial -> elemento
 const visible = new Set();
@@ -33,20 +34,26 @@ function runningOn(serial) {
 
 function createCard(d) {
   const el = h(`<div class="card" data-serial="${esc(d.serial)}">
-    <div class="head"><input type="checkbox" class="sel" /><span class="name"></span><span class="badge tr"></span></div>
-    <div class="screen"><img alt="" /><div class="msg"></div></div>
+    <div class="head"><input type="checkbox" class="sel" /><span class="name"></span><span class="chip tr"></span></div>
+    <div class="screen" title="Clic: tocar · Arrastrar: deslizar · Doble clic: abrir en grande · Clic derecho: atrás">
+      <img alt="" /><div class="msg"></div><div class="run-badge hidden"></div>
+      <div class="hover-ctrl">
+        <button data-k="4" title="Atrás">${icon('back', 13)}</button>
+        <button data-k="3" title="Inicio">${icon('home', 13)}</button>
+        <button data-k="187" title="Recientes">${icon('recent', 13)}</button>
+        <button class="open" title="Abrir en grande">${icon('maximize', 13)}</button>
+      </div>
+    </div>
     <div class="meta"><span class="info"></span><span class="bat"></span></div>
-    <div class="ctrl">
-      <button data-k="4" title="Atrás">↩</button><button data-k="3" title="Inicio">⌂</button><button data-k="187" title="Recientes">▢</button>
-      <button class="mirror" title="Espejo en tiempo real (scrcpy)">🖥</button><button class="more" title="Detalles">⋯</button>
-    </div></div>`);
+  </div>`);
   const serial = d.serial;
   el.querySelector('.sel').onchange = (e) => { e.target.checked ? state.selected.add(serial) : state.selected.delete(serial); updateSelection(); };
   el.querySelector('.head .name').ondblclick = () => renameOne(serial);
+  el.querySelectorAll('.hover-ctrl button').forEach((b) => b.addEventListener('mousedown', (e) => e.stopPropagation()));
+  el.querySelectorAll('.hover-ctrl button').forEach((b) => b.addEventListener('mouseup', (e) => e.stopPropagation()));
   el.querySelectorAll('[data-k]').forEach((b) => (b.onclick = () => call('key', targets(serial), b.dataset.k)));
-  el.querySelector('.mirror').onclick = () => call('scrcpy', serial);
-  el.querySelector('.more').onclick = () => openDetails(serial);
-  bindTouch(el.querySelector('.screen'), serial);
+  el.querySelector('.open').onclick = () => openDetails(serial);
+  bindTouch(el.querySelector('.screen'), serial, { onDouble: () => openDetails(serial) });
   observer.observe(el);
   return el;
 }
@@ -58,19 +65,26 @@ function updateCard(el, d) {
   el.querySelector('.sel').checked = state.selected.has(d.serial);
   el.querySelector('.sel').disabled = d.state !== 'device';
   el.querySelector('.name').textContent = meta.name || d.model || d.serial;
-  el.querySelector('.name').title = `${d.serial}${meta.group ? ` · grupo: ${meta.group}` : ''}\nDoble clic para renombrar`;
+  el.querySelector('.name').title = `${d.serial}${meta.group ? `\nGrupo: ${meta.group}` : ''}${meta.proxy ? `\nProxy: ${meta.proxy}` : ''}\nDoble clic para renombrar`;
   const tr = el.querySelector('.tr');
-  tr.className = `badge tr ${d.transport}`;
-  tr.textContent = d.transport;
+  tr.className = `chip tr ${d.transport}`;
+  tr.textContent = d.transport === 'otg' ? 'OTG' : d.transport === 'wifi' ? 'Wi-Fi' : 'USB';
   const run = runningOn(d.serial);
-  el.querySelector('.info').innerHTML = run ? `<span class="badge run">▶ ${esc(run)}</span>` : esc(meta.group || d.model || '');
+  const badge = el.querySelector('.run-badge');
+  badge.classList.toggle('hidden', !run);
+  badge.textContent = run;
+  el.querySelector('.info').innerHTML = meta.proxy
+    ? `<span class="px" title="Proxy asignado: ${esc(meta.proxy)}">${icon('shield', 11)}<span class="t">${esc(meta.proxy)}</span></span>`
+    : `<span class="t">${esc(meta.group || d.model || '')}</span>`;
   const bat = el.querySelector('.bat');
-  bat.innerHTML = hl.battery != null ? `<span class="${hl.battery < 20 ? 'low' : ''}">🔋${hl.battery}%${hl.charging ? '⚡' : ''}</span>${hl.temperature != null ? ` · ${hl.temperature}°` : ''}` : '';
+  bat.innerHTML = hl.battery != null
+    ? `<span class="${hl.battery < 20 ? 'low' : ''}" title="${hl.temperature != null ? `${hl.temperature} °C` : ''}">${icon(hl.charging ? 'bolt' : 'battery', 11)}${hl.battery}%</span>`
+    : '';
   const msg = el.querySelector('.msg');
-  if (d.state === 'unauthorized') msg.textContent = 'Acepta "Permitir depuración USB" en la pantalla del teléfono';
-  else if (d.state === 'offline') msg.textContent = 'Sin conexión (offline). Reconecta el cable o reinicia ADB.';
+  if (d.state === 'unauthorized') msg.textContent = 'Acepta "Permitir depuración USB" en el teléfono';
+  else if (d.state === 'offline') msg.textContent = 'Sin conexión. Reconecta el cable o reinicia ADB.';
   else if (d.state !== 'device') msg.textContent = `Estado: ${d.state}`;
-  else if (!el.querySelector('img').src) msg.textContent = $('#liveView').checked ? 'Cargando pantalla…' : 'Vista en vivo desactivada';
+  else if (!el.querySelector('img').src) msg.textContent = $('#liveView').checked ? 'Cargando…' : 'Vista en vivo desactivada';
   else msg.textContent = '';
 }
 
@@ -90,18 +104,24 @@ export function renderDevices() {
     updateCard(el, d);
   });
   $('#emptyDevices').classList.toggle('show', state.devices.length === 0);
-  $('#adbHint').textContent = state.adbVersion ? `${state.adbVersion} · ${state.adbPath}` : 'ADB no está instalado: ve a Ajustes → Descargar platform-tools.';
+  $('#adbHint').textContent = state.adbVersion ? `${state.adbVersion} · ${state.adbPath}` : 'ADB no está instalado: puedes descargarlo en Ajustes.';
   const groups = [...new Set(Object.values(state.deviceMeta).map((m) => m.group).filter(Boolean))].sort();
   const gf = $('#devGroupFilter');
   const cur = gf.value;
   gf.innerHTML = `<option value="">Todos los grupos</option>${groups.map((g) => `<option ${g === cur ? 'selected' : ''}>${esc(g)}</option>`).join('')}`;
+  const ready = state.devices.filter((d) => d.state === 'device').length;
+  const byTr = (t) => state.devices.filter((d) => d.transport === t).length;
+  $('#devSummary').textContent = state.devices.length
+    ? `${ready} de ${state.devices.length} listos · ${byTr('usb')} USB · ${byTr('wifi')} Wi-Fi${byTr('otg') ? ` · ${byTr('otg')} OTG` : ''}`
+    : 'Sin dispositivos';
   updateSelection(false);
 }
 
 function updateSelection(rerender = true) {
   const n = selectedSerials().length;
   $('#selCount').textContent = `${n} seleccionado${n === 1 ? '' : 's'}`;
-  $('#wfRun') && ($('#wfRun').textContent = n ? `▶ Ejecutar en ${n} seleccionado${n === 1 ? '' : 's'}` : '▶ Ejecutar en todos');
+  const wfLabel = $('#wfRun span');
+  if (wfLabel) wfLabel.textContent = n ? `Ejecutar en ${n}` : 'Ejecutar en todos';
   if (rerender) for (const [serial, el] of cards) {
     el.classList.toggle('selected', state.selected.has(serial));
     el.querySelector('.sel').checked = state.selected.has(serial);
@@ -114,33 +134,55 @@ function targets(serial) {
   return [...new Set([serial, ...selectedSerials()])];
 }
 
-function bindTouch(screen, serial) {
+/**
+ * Toques sobre una pantalla. Con onDouble, el toque simple se retrasa un instante para poder
+ * distinguir el doble clic (que abre la vista grande) y no enviar dos toques al teléfono.
+ */
+function bindTouch(screen, serial, { onDouble, live = () => refreshShot(serial, true) } = {}) {
   let start = null;
+  let pendingTap = null;
   const pos = (e) => {
     const img = screen.querySelector('img');
     const r = screen.getBoundingClientRect();
-    // La imagen usa object-fit: contain → calcular el área real de la imagen.
+    // La imagen usa object-fit: contain, así que se calcula el área real que ocupa.
     const iw = img.naturalWidth || 9; const ih = img.naturalHeight || 19.5;
     const scale = Math.min(r.width / iw, r.height / ih);
     const w = iw * scale; const hh = ih * scale;
     const ox = r.left + (r.width - w) / 2; const oy = r.top + (r.height - hh) / 2;
     return { x: Math.min(1, Math.max(0, (e.clientX - ox) / w)), y: Math.min(1, Math.max(0, (e.clientY - oy) / hh)), cx: e.clientX - r.left, cy: e.clientY - r.top };
   };
+  const ripple = (p) => {
+    const el = h('<span class="ripple"></span>');
+    el.style.left = `${p.cx}px`; el.style.top = `${p.cy}px`;
+    screen.appendChild(el); setTimeout(() => el.remove(), 450);
+  };
   screen.addEventListener('mousedown', (e) => { if (e.button === 0) start = { ...pos(e), t: Date.now() }; });
   screen.addEventListener('mouseup', async (e) => {
     if (e.button !== 0 || !start) return;
     const end = pos(e);
-    const ripple = h('<span class="ripple"></span>');
-    ripple.style.left = `${end.cx}px`; ripple.style.top = `${end.cy}px`;
-    screen.appendChild(ripple); setTimeout(() => ripple.remove(), 500);
     const dist = Math.hypot(end.x - start.x, end.y - start.y);
     const dur = Math.min(2000, Math.max(120, Date.now() - start.t));
     const s0 = start; start = null;
-    if (dist < 0.02) {
-      if (dur > 600) await call('swipe', targets(serial), s0.x, s0.y, s0.x, s0.y, dur);
-      else await call('tap', targets(serial), s0.x, s0.y);
-    } else await call('swipe', targets(serial), s0.x, s0.y, end.x, end.y, dur);
-    setTimeout(() => refreshShot(serial, true), 350);
+    if (dist >= 0.02) {
+      ripple(end);
+      await call('swipe', targets(serial), s0.x, s0.y, end.x, end.y, dur);
+    } else if (dur > 600) {
+      ripple(end);
+      await call('swipe', targets(serial), s0.x, s0.y, s0.x, s0.y, dur);
+    } else if (onDouble) {
+      if (pendingTap) { clearTimeout(pendingTap); pendingTap = null; onDouble(); return; }
+      pendingTap = setTimeout(async () => {
+        pendingTap = null;
+        ripple(end);
+        await call('tap', targets(serial), s0.x, s0.y);
+        setTimeout(live, 350);
+      }, 260);
+      return;
+    } else {
+      ripple(end);
+      await call('tap', targets(serial), s0.x, s0.y);
+    }
+    setTimeout(live, 350);
   });
   screen.addEventListener('contextmenu', (e) => { e.preventDefault(); call('key', targets(serial), 4); });
   screen.addEventListener('wheel', (e) => {
@@ -192,64 +234,80 @@ async function renameOne(serial) {
   renderDevices();
 }
 
-// ---------- Detalles de un dispositivo ----------
-async function openDetails(serial) {
+// ---------- Vista grande de un dispositivo ----------
+export async function openDetails(serial) {
   let timer;
+  const b = (id, ic, label, cls = '') => `<button id="${id}" class="${cls}">${icon(ic, 15)}${label}</button>`;
+  const k = (code, ic, label) => `<button data-k="${code}">${icon(ic, 15)}${label}</button>`;
+  const meta = state.deviceMeta[serial] || {};
+  const proxyOpts = ['<option value="">Sin proxy</option>', ...state.proxies.map((p) =>
+    `<option value="${esc(p.key)}" ${p.key === meta.proxy ? 'selected' : ''}>${esc(p.key)}${p.status === 'error' ? ' (falla)' : ''}</option>`)].join('');
   const html = `<div class="big-device">
     <div class="screen"><img alt="" /><div class="msg">Cargando…</div></div>
-    <div>
-      <div class="kv" id="dKv"><span>Serie</span><span>${esc(serial)}</span></div>
+    <div class="side">
+      <div class="kv" id="dKv"><span>Serie</span><span class="mono">${esc(serial)}</span></div>
       <div class="section-title">Control</div>
       <div class="btn-grid">
-        <button data-k="4">↩ Atrás</button><button data-k="3">⌂ Inicio</button><button data-k="187">▢ Recientes</button>
-        <button data-k="24">🔊 Vol +</button><button data-k="25">🔉 Vol −</button><button data-k="26">⏻ Encendido</button>
-        <button id="dText">⌨ Escribir</button><button id="dShot">📸 Guardar captura</button><button id="dRename">🏷 Renombrar</button>
+        ${k(4, 'back', 'Atrás')}${k(3, 'home', 'Inicio')}${k(187, 'recent', 'Recientes')}
+        ${k(24, 'volup', 'Volumen +')}${k(25, 'voldown', 'Volumen -')}${k(26, 'power', 'Encendido')}
+        ${b('dText', 'keyboard', 'Escribir')}${b('dShot', 'camera', 'Captura')}${b('dRename', 'tag', 'Renombrar')}
       </div>
-      <div class="section-title">Espejo y grabación (scrcpy)</div>
-      <div class="btn-grid">
-        <button id="dMirror">🖥 Espejo</button><button id="dMirrorView">👁 Solo ver</button><button id="dRecord">⏺ Grabar</button>
-      </div>
+      <div class="section-title">Proxy</div>
+      <div class="inline-row"><select id="dProxy">${proxyOpts}</select>${b('dProxyApply', 'check', 'Asignar y aplicar', 'primary')}</div>
+      <div class="inline-row">${b('dProxyRead', 'eye', 'Ver proxy actual')}${b('dProxyClear', 'x', 'Quitar del teléfono')}</div>
+      <div class="section-title">Espejo y grabación</div>
+      <div class="btn-grid">${b('dMirror', 'monitor', 'Espejo')}${b('dMirrorView', 'eye', 'Solo ver')}${b('dRecord', 'record', 'Grabar')}</div>
       <div class="section-title">Conexión y energía</div>
-      <div class="btn-grid">
-        <button id="dWifi">📶 USB → Wi-Fi</button><button id="dReboot">⟲ Reiniciar</button><button id="dRecovery">🛠 Recovery</button>
-      </div>
+      <div class="btn-grid">${b('dWifi', 'wifi', 'USB a Wi-Fi')}${b('dReboot', 'refresh', 'Reiniciar')}${b('dRecovery', 'wrench', 'Recovery')}</div>
       <div class="section-title">Apps instaladas</div>
-      <div class="inline" style="display:flex;gap:6px"><select id="dApps" style="flex:1"></select><button id="dOpen">Abrir</button><button id="dStop">Cerrar</button><button id="dUninstall" class="danger">Desinstalar</button></div>
+      <div class="inline-row"><select id="dApps"></select><button id="dOpen">Abrir</button><button id="dStop">Cerrar</button><button id="dUninstall" class="danger">Desinstalar</button></div>
     </div></div>`;
   modal({ title: deviceName(serial), html, okText: '', cancelText: 'Cerrar', wide: true, onMount: async (el) => {
     const screen = el.querySelector('.screen');
-    bindTouch(screen, serial);
-    const refresh = async () => {
+    let refresh;
+    bindTouch(screen, serial, { live: () => { clearTimeout(timer); refresh(); } });
+    refresh = async () => {
       try {
-        const shot = await api.call('screenshot', serial, 720);
+        const shot = await api.call('screenshot', serial, 900);
         screen.querySelector('img').src = shot.data;
         screen.querySelector('.msg').textContent = '';
       } catch {}
-      if (el.isConnected) timer = setTimeout(refresh, 900);
+      if (el.isConnected) timer = setTimeout(refresh, 800);
     };
     refresh();
-    el.querySelectorAll('[data-k]').forEach((b) => (b.onclick = () => call('key', [serial], b.dataset.k)));
-    el.querySelector('#dText').onclick = async () => { const v = await modal({ title: 'Escribir texto', fields: [{ key: 't', label: 'Texto' }] }); if (v?.t) call('text', [serial], v.t); };
-    el.querySelector('#dShot').onclick = async () => toast(`Captura guardada en ${await call('saveScreenshot', serial)}`);
-    el.querySelector('#dRename').onclick = () => renameOne(serial);
-    el.querySelector('#dMirror').onclick = () => call('scrcpy', serial);
-    el.querySelector('#dMirrorView').onclick = () => call('scrcpy', serial, { noControl: true });
-    el.querySelector('#dRecord').onclick = () => { call('scrcpy', serial, { record: true }); toast('Grabando: cierra la ventana de scrcpy para terminar. El vídeo se guarda en Imágenes/Granja.'); };
-    el.querySelector('#dWifi').onclick = async () => showResults('USB → Wi-Fi', await call('usbToWifi', [serial]));
-    el.querySelector('#dReboot').onclick = () => call('reboot', [serial]);
-    el.querySelector('#dRecovery').onclick = () => call('reboot', [serial], 'recovery');
-    const pkg = () => el.querySelector('#dApps').value;
-    el.querySelector('#dOpen').onclick = () => call('shellCmd', [serial], `monkey -p ${pkg()} -c android.intent.category.LAUNCHER 1`);
-    el.querySelector('#dStop').onclick = () => call('shellCmd', [serial], `am force-stop ${pkg()}`);
-    el.querySelector('#dUninstall').onclick = async () => { await call('shellCmd', [serial], `pm uninstall ${pkg()}`); toast(`${pkg()} desinstalada`); };
+    const $m = (sel) => el.querySelector(sel);
+    el.querySelectorAll('[data-k]').forEach((x) => (x.onclick = () => call('key', [serial], x.dataset.k)));
+    $m('#dText').onclick = async () => { const v = await modal({ title: 'Escribir texto', fields: [{ key: 't', label: 'Texto' }] }); if (v?.t) call('text', [serial], v.t); };
+    $m('#dShot').onclick = async () => toast(`Captura guardada en ${await call('saveScreenshot', serial)}`);
+    $m('#dRename').onclick = () => renameOne(serial);
+    $m('#dProxyApply').onclick = async () => {
+      state.deviceMeta = await call('proxySetOne', serial, $m('#dProxy').value, true);
+      toast($m('#dProxy').value ? `Proxy ${$m('#dProxy').value} aplicado` : 'Proxy quitado');
+      renderDevices();
+    };
+    $m('#dProxyRead').onclick = async () => {
+      const cur = await call('readDeviceProxy', serial);
+      toast(cur && cur !== 'null' && cur !== ':0' ? `Proxy activo en el teléfono: ${cur}` : 'El teléfono no tiene proxy activo');
+    };
+    $m('#dProxyClear').onclick = async () => { await call('setProxy', [serial], ''); toast('Proxy quitado del teléfono (la asignación se mantiene)'); };
+    $m('#dMirror').onclick = () => call('scrcpy', serial);
+    $m('#dMirrorView').onclick = () => call('scrcpy', serial, { noControl: true });
+    $m('#dRecord').onclick = () => { call('scrcpy', serial, { record: true }); toast('Grabando. Cierra la ventana de scrcpy para terminar; el vídeo se guarda en Imágenes/Granja.'); };
+    $m('#dWifi').onclick = async () => showResults('USB a Wi-Fi', await call('usbToWifi', [serial]));
+    $m('#dReboot').onclick = () => call('reboot', [serial]);
+    $m('#dRecovery').onclick = () => call('reboot', [serial], 'recovery');
+    const pkg = () => $m('#dApps').value;
+    $m('#dOpen').onclick = () => call('shellCmd', [serial], `monkey -p ${pkg()} -c android.intent.category.LAUNCHER 1`);
+    $m('#dStop').onclick = () => call('shellCmd', [serial], `am force-stop ${pkg()}`);
+    $m('#dUninstall').onclick = async () => { await call('shellCmd', [serial], `pm uninstall ${pkg()}`); toast(`${pkg()} desinstalada`); };
     try {
       const info = await call('details', serial);
-      const rows = [['Fabricante', info.manufacturer], ['Modelo', info.model], ['Android', `${info.android} (SDK ${info.sdk})`],
-        ['Batería', info.battery != null ? `${info.battery}%${info.charging ? ' cargando' : ''}` : '—'], ['Temperatura', info.temperature != null ? `${info.temperature} °C` : '—'],
-        ['IP Wi-Fi', info.ip || '—'], ['Almacenamiento', info.storageUse || '—']];
-      el.querySelector('#dKv').insertAdjacentHTML('beforeend', rows.map(([k, v]) => `<span>${k}</span><span>${esc(v ?? '—')}</span>`).join(''));
+      const rows = [['Modelo', `${info.manufacturer || ''} ${info.model || ''}`.trim()], ['Android', `${info.android} (SDK ${info.sdk})`],
+        ['Batería', info.battery != null ? `${info.battery}%${info.charging ? ', cargando' : ''}` : '-'], ['Temperatura', info.temperature != null ? `${info.temperature} °C` : '-'],
+        ['IP Wi-Fi', info.ip || '-'], ['Almacenamiento', info.storageUse ? `${info.storageUse} usado` : '-']];
+      $m('#dKv').insertAdjacentHTML('beforeend', rows.map(([kk, v]) => `<span>${kk}</span><span>${esc(v ?? '-')}</span>`).join(''));
       const apps = await call('listPackages', serial);
-      el.querySelector('#dApps').innerHTML = apps.map((a) => `<option>${esc(a)}</option>`).join('');
+      $m('#dApps').innerHTML = apps.map((a) => `<option>${esc(a)}</option>`).join('');
     } catch {}
   } }).then(() => clearTimeout(timer));
 }
@@ -258,22 +316,22 @@ async function openDetails(serial) {
 async function openConnect() {
   const html = `
     <div class="section-title">ADB por Wi-Fi</div>
-    <div style="display:flex;gap:6px"><input id="cAddr" placeholder="192.168.1.50:5555" style="flex:1"/><button id="cConnect" class="primary">Conectar</button></div>
-    <div class="section-title">Emparejar (Android 11+ · Depuración inalámbrica)</div>
-    <div style="display:flex;gap:6px"><input id="pAddr" placeholder="IP:puerto de emparejamiento" style="flex:1"/><input id="pCode" placeholder="Código" style="width:110px"/><button id="pPair">Emparejar</button></div>
+    <div class="inline-row"><input id="cAddr" placeholder="192.168.1.50:5555"/><button id="cConnect" class="primary">${icon('plug')}Conectar</button></div>
+    <div class="section-title">Emparejar (Android 11 o superior, depuración inalámbrica)</div>
+    <div class="inline-row"><input id="pAddr" placeholder="IP:puerto de emparejamiento"/><input id="pCode" placeholder="Código" style="max-width:110px"/><button id="pPair">Emparejar</button></div>
     <div class="section-title">Automático</div>
     <div class="btn-grid">
-      <button id="cScan">🔍 Escanear red local</button><button id="cUsbWifi">📶 Seleccionados USB → Wi-Fi</button><button id="cRestart">⟲ Reiniciar ADB</button>
+      <button id="cScan">${icon('search')}Escanear red</button><button id="cUsbWifi">${icon('wifi')}Seleccionados a Wi-Fi</button><button id="cRestart">${icon('refresh')}Reiniciar ADB</button>
     </div>
-    <div class="section-title">USB / OTG</div>
-    <p class="muted" style="margin:0">Los teléfonos conectados por cable o por hubs/adaptadores OTG aparecen solos. Activa <b>Ajustes → Motor USB directo (OTG)</b> para manejarlos sin adb.exe (ideal para hubs con muchos puertos). Con el motor OTG cierra el servidor ADB para que libere los dispositivos.</p>
+    <div class="section-title">USB y OTG</div>
+    <p>Los teléfonos conectados por cable o por hubs y adaptadores OTG aparecen solos. Activa <b>Motor USB directo</b> en Ajustes para manejarlos sin adb.exe, recomendable con hubs de muchos puertos. En ese modo cierra el servidor ADB para que libere los dispositivos.</p>
     <div id="cOut" class="results"></div>`;
   modal({ title: 'Conectar dispositivos', html, okText: '', cancelText: 'Cerrar', onMount: (el) => {
     const out = (t, ok = true) => el.querySelector('#cOut').prepend(h(`<div class="${ok ? '' : 'fail'}">${esc(t)}</div>`));
     el.querySelector('#cConnect').onclick = async () => out(await call('connectWifi', el.querySelector('#cAddr').value.trim()));
     el.querySelector('#pPair').onclick = async () => out(await call('pair', el.querySelector('#pAddr').value.trim(), el.querySelector('#pCode').value.trim()));
     el.querySelector('#cScan').onclick = async () => {
-      out('Escaneando la red… (puede tardar ~20 s)');
+      out('Escaneando la red local, puede tardar unos 20 segundos');
       const found = await call('scanNetwork');
       out(found.length ? `Encontrados: ${found.join(', ')}` : 'No se encontraron dispositivos con ADB por TCP (puerto 5555).', found.length > 0);
     };
@@ -290,7 +348,7 @@ async function openConnect() {
 async function needSelection() {
   const sel = selectedSerials();
   if (sel.length) return sel;
-  toast('Selecciona al menos un dispositivo (casilla de cada tarjeta o "Seleccionar todo")', 'warn');
+  toast('Selecciona al menos un dispositivo con su casilla o con "Todos"', 'warn');
   return null;
 }
 
@@ -299,7 +357,7 @@ const actions = {
     const sel = await needSelection(); if (!sel) return;
     const files = await call('pickFiles', { multi: true, filters: [{ name: 'APK', extensions: ['apk'] }] });
     if (!files.length) return;
-    toast(`Instalando ${files.length} APK en ${sel.length} dispositivo(s)…`);
+    toast(`Instalando ${files.length} APK en ${sel.length} dispositivo(s)`);
     showResults('Instalar APK', await call('installApks', sel, files));
   },
   async push() {
@@ -327,7 +385,7 @@ const actions = {
   },
   async run() {
     const sel = await needSelection(); if (!sel) return;
-    if (!state.workflows.length) return toast('Crea primero un flujo en Automatización', 'warn');
+    if (!state.workflows.length) return toast('Crea primero un flujo en Flujos', 'warn');
     const v = await modal({ title: `Ejecutar flujo en ${sel.length} dispositivo(s)`, fields: [
       { key: 'id', label: 'Flujo', type: 'select', options: state.workflows.map((w) => [w.id, w.name]) },
       { key: 'concurrency', label: 'Dispositivos en paralelo', type: 'number', value: state.settings.runConcurrency },
@@ -338,9 +396,11 @@ const actions = {
     toast('Flujo lanzado. Sigue el progreso en Ejecuciones.');
   },
   async proxy() {
-    const sel = await needSelection(); if (!sel) return;
-    const v = await modal({ title: 'Proxy HTTP global', fields: [{ key: 'p', label: 'host:puerto (vacío para quitar el proxy)', placeholder: '192.168.1.10:8080' }] });
-    if (v) showResults('Proxy', await call('setProxy', sel, v.p.trim()));
+    if (!state.proxies.length) {
+      toast('Añade primero tu lista de proxys en la sección Proxys', 'warn');
+      return;
+    }
+    openAssignModal(selectedSerials({ fallbackAll: true }));
   },
   async rename() {
     const sel = await needSelection(); if (!sel) return;
@@ -355,7 +415,7 @@ const actions = {
   },
   async wifi() {
     const sel = await needSelection(); if (!sel) return;
-    showResults('USB → Wi-Fi', await call('usbToWifi', sel));
+    showResults('USB a Wi-Fi', await call('usbToWifi', sel));
   },
   async home() { const sel = await needSelection(); if (sel) call('key', sel, 3); },
   async back() { const sel = await needSelection(); if (sel) call('key', sel, 4); },
@@ -383,12 +443,12 @@ export function initDevices() {
   $('#liveView').onchange = () => renderDevices();
   const applySize = () => document.documentElement.style.setProperty('--thumb', `${$('#thumbSize').value}px`);
   $('#thumbSize').oninput = applySize;
-  try { $('#thumbSize').value = localStorage.getItem('thumb') || 200; } catch {}
-  $('#thumbSize').onchange = () => { try { localStorage.setItem('thumb', $('#thumbSize').value); } catch {} };
+  try { $('#thumbSize').value = localStorage.getItem('thumb2') || 120; } catch {}
+  $('#thumbSize').onchange = () => { try { localStorage.setItem('thumb2', $('#thumbSize').value); } catch {} };
   applySize();
   $$('.actionbar [data-act]').forEach((b) => (b.onclick = () => actions[b.dataset.act]()));
 
-  // Arrastrar y soltar: APK → instalar, otros → enviar a /sdcard/Download.
+  // Arrastrar y soltar: los APK se instalan y el resto se envía a /sdcard/Download.
   const view = $('#view-devices');
   let depth = 0;
   view.addEventListener('dragenter', (e) => { e.preventDefault(); depth++; $('#dropHint').classList.add('show'); });
@@ -400,7 +460,7 @@ export function initDevices() {
     const files = [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean);
     const apks = files.filter((f) => f.toLowerCase().endsWith('.apk'));
     const others = files.filter((f) => !f.toLowerCase().endsWith('.apk'));
-    if (apks.length) { toast(`Instalando ${apks.length} APK…`); showResults('Instalar APK', await call('installApks', sel, apks)); }
+    if (apks.length) { toast(`Instalando ${apks.length} APK`); showResults('Instalar APK', await call('installApks', sel, apks)); }
     if (others.length) showResults('Enviar archivos', await call('pushFiles', sel, others, '/sdcard/Download/'));
   });
 

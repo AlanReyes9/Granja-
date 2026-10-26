@@ -25,8 +25,9 @@ export function compileDrawflow(exported) {
 }
 
 export class Engine extends EventEmitter {
-  constructor({ devices, store, notifier, screenshotsDir }) {
+  constructor({ devices, store, notifier, screenshotsDir, proxies }) {
     super();
+    this.proxies = proxies;
     this.devices = devices;
     this.store = store;
     this.notifier = notifier;
@@ -103,7 +104,7 @@ export class Engine extends EventEmitter {
     const meta = (this.store.get('deviceMeta') || {})[serial] || {};
     const vars = {
       'device.serial': serial, 'device.name': meta.name || serial, 'device.group': meta.group || '',
-      'device.index': index, 'run.id': run.id,
+      'device.index': index, 'device.proxy': meta.proxy || '', 'run.id': run.id,
     };
     const loopCounters = {};
     state.status = 'ejecutando';
@@ -283,6 +284,18 @@ export class Engine extends EventEmitter {
         return 0;
       }
       case 'set_proxy': await device.shell(`settings put global http_proxy ${p.proxy ? p.proxy : ':0'}`); return 0;
+      case 'proxy_assigned': {
+        if (!this.proxies.assignments()[ctx.serial]) { log('Sin proxy asignado', 'warn'); return 1; }
+        log(`Proxy aplicado: ${await this.proxies.apply(ctx.serial)}`);
+        return 0;
+      }
+      case 'proxy_rotate': {
+        const key = this.proxies.rotate(ctx.serial);
+        await this.proxies.apply(ctx.serial);
+        vars.proxy = key;
+        log(`Proxy rotado a ${key}`);
+        return 0;
+      }
       case 'airplane': {
         const on = 'settings put global airplane_mode_on 1; am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true; cmd connectivity airplane-mode enable';
         const off = 'settings put global airplane_mode_on 0; am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false; cmd connectivity airplane-mode disable';

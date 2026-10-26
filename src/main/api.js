@@ -2,7 +2,8 @@
 import http from 'node:http';
 
 export class ApiServer {
-  constructor({ store, devices, engine }) {
+  constructor({ store, devices, engine, proxies }) {
+    this.proxies = proxies;
     this.store = store;
     this.devices = devices;
     this.engine = engine;
@@ -46,6 +47,17 @@ export class ApiServer {
     if (route === 'GET /api/workflows') {
       return send(res, 200, (this.store.get('workflows') || []).map((w) => ({ id: w.id, name: w.name })));
     }
+    if (route === 'GET /api/proxies') {
+      const asg = this.proxies.assignments();
+      return send(res, 200, this.proxies.list().map((p) => ({ proxy: p.key, status: p.status, latency: p.latency,
+        devices: Object.keys(asg).filter((x) => asg[x] === p.key) })));
+    }
+    if (route === 'POST /api/proxies/assign') {
+      const serials = body.serials || this.devices.ready().map((d) => d.serial);
+      const result = this.proxies.assign(serials, { strategy: body.strategy, onlyHealthy: body.onlyHealthy });
+      if (body.apply !== false) await Promise.all(serials.map((x) => this.proxies.apply(x).catch(() => {})));
+      return send(res, 200, result);
+    }
     if (route === 'GET /api/runs') return send(res, 200, this.engine.listRuns());
     if (route === 'POST /api/run') {
       const wf = (this.store.get('workflows') || []).find((w) => w.id === body.workflowId || w.name === body.workflow);
@@ -72,7 +84,7 @@ export class ApiServer {
       res.writeHead(200, { 'content-type': 'image/png' });
       return res.end(png);
     }
-    send(res, 404, { error: 'ruta no encontrada', rutas: ['GET /api/devices', 'GET /api/workflows', 'GET /api/runs', 'POST /api/run', 'POST /api/stop', 'POST /api/shell', 'GET /api/screenshot/:serial'] });
+    send(res, 404, { error: 'ruta no encontrada', rutas: ['GET /api/devices', 'GET /api/workflows', 'GET /api/runs', 'GET /api/proxies', 'POST /api/proxies/assign', 'POST /api/run', 'POST /api/stop', 'POST /api/shell', 'GET /api/screenshot/:serial'] });
   }
 }
 

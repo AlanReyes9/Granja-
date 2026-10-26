@@ -13,6 +13,7 @@ import { Scheduler } from './scheduler.js';
 import { ApiServer } from './api.js';
 import { Tools } from './tools.js';
 import { parseCsv, toCsv } from './csv.js';
+import { ProxyManager } from './proxies.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,9 +29,10 @@ const usb = new UsbDirectBackend(userData);
 const devices = new DeviceManager({ adb, usb, getSettings: settings });
 const notifier = new Notifier(settings);
 const screenshotsDir = path.join(app.getPath('pictures'), 'Granja');
-const engine = new Engine({ devices, store, notifier, screenshotsDir });
+const proxies = new ProxyManager({ store, devices });
+const engine = new Engine({ devices, store, notifier, screenshotsDir, proxies });
 const scheduler = new Scheduler({ store, engine, devices, onEvent: (m) => toast(m) });
-const api = new ApiServer({ store, devices, engine });
+const api = new ApiServer({ store, devices, engine, proxies });
 const health = {}; // serial -> details
 const alerted = new Set();
 
@@ -60,10 +62,10 @@ async function healthTick() {
       const name = store.get('deviceMeta')[d.serial]?.name || d.serial;
       const key = (k) => `${d.serial}:${k}`;
       if (info.battery != null && info.battery < s.alertBatteryBelow && !info.charging) {
-        if (!alerted.has(key('bat'))) { alerted.add(key('bat')); alert(`🔋 ${name}: batería al ${info.battery}%`); }
+        if (!alerted.has(key('bat'))) { alerted.add(key('bat')); alert(`${name}: batería al ${info.battery}%`); }
       } else alerted.delete(key('bat'));
       if (info.temperature != null && info.temperature > s.alertTempAbove) {
-        if (!alerted.has(key('temp'))) { alerted.add(key('temp')); alert(`🔥 ${name}: temperatura ${info.temperature} °C`); }
+        if (!alerted.has(key('temp'))) { alerted.add(key('temp')); alert(`${name}: temperatura ${info.temperature} °C`); }
       } else alerted.delete(key('temp'));
     } catch {}
   }
@@ -76,11 +78,16 @@ function alert(message) {
 }
 
 devices.on('changed', (list) => emit('devices', list));
+devices.on('connected', (serial) => {
+  // Al conectar un teléfono con proxy asignado se le vuelve a aplicar (tras un reinicio se pierde a veces).
+  if (!settings().autoApplyProxy || !proxies.assignments()[serial]) return;
+  setTimeout(() => proxies.apply(serial).catch(() => {}), 3000);
+});
 devices.on('disconnected', (serial) => {
   delete health[serial];
   if (settings().alertOnDisconnect) {
     const name = store.get('deviceMeta')[serial]?.name || serial;
-    alert(`🔌 ${name} se desconectó`);
+    alert(`${name} se desconectó`);
   }
 });
 engine.on('runs', (runs) => emit('runs', runs));
@@ -107,7 +114,7 @@ const handlers = {
     let adbVersion = null;
     try { adbVersion = await adb.version(); } catch {}
     return {
-      devices: devices.list(), settings: settings(), defaults: DEFAULT_SETTINGS, workflows: store.get('workflows'),
+      devices: devices.list(), settings: settings(), defaults: DEFAULT_SETTINGS, workflows: store.get('workflows'), proxies: proxies.list(),
       schedules: store.get('schedules'), deviceMeta: store.get('deviceMeta'), tables: store.get('tables').map(({ rows, ...t }) => ({ ...t, count: rows.length })),
       runs: engine.listRuns(), adbVersion, adbPath: adbPath(), lastError: devices.lastError, api: api.status(), health,
       scrcpy: settings().scrcpyPath || tools.localScrcpy(), screenshotsDir, version: app.getVersion(),
@@ -193,6 +200,28 @@ const handlers = {
     store.set('deviceMeta', all);
     return all;
   },
+
+  // Proxys
+  proxiesSet: (text, append) => proxies.setList(text, { append }),
+  proxiesRemove: (keys) => proxies.remove(keys),
+  proxiesAssign: async (serials, opts = {}) => {
+    const result = proxies.assign(serials, opts);
+    if (opts.apply) await forEachSerial(serials, (d) => proxies.apply(d.serial));
+    return result;
+  },
+  proxiesUnassign: async (serials, clearDevice) => {
+    proxies.unassign(serials);
+    if (clearDevice) await forEachSerial(serials, (d) => proxies.clearOnDevice(d.serial));
+    return store.get('deviceMeta');
+  },
+  proxySetOne: async (serial, key, apply) => {
+    proxies.setAssignment(serial, key || null);
+    if (apply) await proxies.apply(serial);
+    return store.get('deviceMeta');
+  },
+  proxiesApply: (serials) => forEachSerial(serials, (d) => proxies.apply(d.serial)),
+  proxiesTest: (keys) => proxies.test(keys, (done, total) => emit('progress', { label: 'Probando proxys', pct: Math.round((done / total) * 100) })),
+  readDeviceProxy: async (serial) => (await devices.get(serial).shell('settings get global http_proxy')).trim(),
 
   // Flujos
   saveWorkflow: (wf) => {
@@ -296,7 +325,7 @@ const handlers = {
     store.set('settings', { ...settings(), scrcpyPath: p });
     return p;
   },
-  testNotify: () => notifier.send('Prueba de notificación ✅'),
+  testNotify: () => notifier.send('Prueba de notificación'),
   openFolder: (p) => shell.openPath(p || screenshotsDir),
   openExternal: (url) => shell.openExternal(url),
 };

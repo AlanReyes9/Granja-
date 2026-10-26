@@ -1,6 +1,6 @@
 // Editor visual de automatizaciones por nodos (Drawflow).
 import { NODE_TYPES, NODE_MAP, CATEGORIES, defaultParams } from '../shared/nodes.js';
-import { state, $, esc, call, toast, modal } from './core.js';
+import { state, $, esc, call, toast, modal, icon } from './core.js';
 import { selectedSerials } from './devices.js';
 import { TEMPLATES, buildGraph } from './templates.js';
 
@@ -9,10 +9,11 @@ let current = null; // flujo abierto {id, name, graph}
 let dirty = false;
 
 const catColor = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.color]));
+const catLabel = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.label]));
 
 function nodeHtml(type, data) {
   const def = NODE_MAP[type];
-  if (!def) return `<div class="node-body"><div class="nh">❔ ${esc(type)}</div></div>`;
+  if (!def) return `<div class="node-body"><div class="nh">${esc(type)}</div></div>`;
   const fields = def.params.map((p) => {
     const v = data?.[p.key] ?? p.default;
     if (p.type === 'select') {
@@ -22,7 +23,7 @@ function nodeHtml(type, data) {
     return `<label>${esc(p.label)}<input data-key="${p.key}" type="${p.type === 'number' ? 'number' : 'text'}" value="${esc(v)}"/></label>`;
   }).join('');
   return `<div class="node-body" style="--c:${catColor[def.category]}">
-    <div class="nh">${def.icon} ${esc(def.label)}</div>
+    <div class="nh"><span class="nic">${icon(def.icon, 14)}</span>${esc(def.label)}<small>${esc(catLabel[def.category])}</small></div>
     ${fields || def.help ? `<div class="nf">${fields}${def.help ? `<div class="help">${esc(def.help)}</div>` : ''}</div>` : ''}
   </div>`;
 }
@@ -104,8 +105,13 @@ export function highlightRuns() {
 
 function buildPalette() {
   const pal = $('#palette');
-  pal.innerHTML = CATEGORIES.map((c) => `<h4>${esc(c.label)}</h4>${NODE_TYPES.filter((n) => n.category === c.id).map((n) =>
-    `<div class="item" draggable="true" data-type="${n.type}" style="--c:${c.color}" title="${esc(n.help || '')}">${n.icon} ${esc(n.label)}</div>`).join('')}`).join('');
+  const q = ($('#palSearch')?.value || '').trim().toLowerCase();
+  pal.innerHTML = CATEGORIES.map((c) => {
+    const items = NODE_TYPES.filter((n) => n.category === c.id && (!q || n.label.toLowerCase().includes(q)));
+    if (!items.length) return '';
+    return `<h4>${esc(c.label)}</h4>${items.map((n) =>
+      `<div class="item" draggable="true" data-type="${n.type}" style="--c:${c.color}" title="${esc(n.help || 'Arrastra al lienzo o haz doble clic')}"><span class="nic">${icon(n.icon, 14)}</span>${esc(n.label)}</div>`).join('')}`;
+  }).join('') || '<p class="muted">Ningún nodo coincide</p>';
   pal.querySelectorAll('.item').forEach((it) => {
     it.addEventListener('dragstart', (e) => e.dataTransfer.setData('node', it.dataset.type));
     it.addEventListener('dblclick', () => {
@@ -122,6 +128,7 @@ export function initEditor() {
   editor.reroute_fix_curvature = true;
   editor.start();
   buildPalette();
+  $('#palSearch').oninput = buildPalette;
 
   container.addEventListener('dragover', (e) => e.preventDefault());
   container.addEventListener('drop', (e) => {
@@ -181,7 +188,7 @@ export function initEditor() {
   };
   $('#wfTemplate').onclick = async () => {
     const v = await modal({ title: 'Plantillas', fields: [{ key: 'i', label: 'Plantilla', type: 'select', options: TEMPLATES.map((t, i) => [i, t.name]) }],
-      html: `<div class="muted">${TEMPLATES.map((t) => `<p><b>${esc(t.name)}:</b> ${esc(t.description)}</p>`).join('')}</div>`, okText: 'Usar plantilla' });
+      html: TEMPLATES.map((t) => `<p><b>${esc(t.name)}.</b> ${esc(t.description)}</p>`).join(''), okText: 'Usar plantilla' });
     if (!v || !(await confirmDiscard())) return;
     const t = TEMPLATES[Number(v.i)];
     openWorkflow({ id: null, name: t.name, graph: t.build() });
