@@ -24,13 +24,14 @@ function showActivation(st) {
           <span>ID de este equipo</span>
           <div><code id="actMachine">${esc(st.machineId)}</code><button class="ghost sm" id="actCopy">${icon('copy', 14)}Copiar</button></div>
         </div>
-        <div class="filter-tabs" id="actTabs">
+        ${st.offlineAvailable ? `<div class="filter-tabs" id="actTabs">
           <button data-t="online" class="${st.onlineAvailable ? 'active' : ''}" ${st.onlineAvailable ? '' : 'disabled'}>Con serial</button>
           <button data-t="offline" class="${st.onlineAvailable ? '' : 'active'}">Sin conexión</button>
-        </div>
+        </div>` : ''}
+        ${st.configured && !st.onlineAvailable && !st.offlineAvailable ? '<p class="act-error">Esta copia de la app no tiene configurado el servidor de licencias. Contacta con Nexus Dev.</p>' : ''}
         <div class="act-pane" data-t="online">
           <label>Serial<input id="actSerial" class="mono" placeholder="NXF-XXXXX-XXXXX-XXXXX-XXXXX" value="${esc(st.serial && st.serial.startsWith('NXF-') ? st.serial : '')}" spellcheck="false" /></label>
-          <p class="muted small">El serial queda vinculado a este equipo al activarlo. Necesitas conexión a internet.</p>
+          <p class="muted small">El serial queda vinculado a este equipo al activarlo. Necesitas conexión a internet. Si cambias de PC, pide a Nexus Dev que libere tu serial (diles tu ID de equipo).</p>
         </div>
         <div class="act-pane hidden" data-t="offline">
           <label>Clave de licencia<textarea id="actKey" class="mono" rows="4" placeholder="NXF1.…" spellcheck="false"></textarea></label>
@@ -41,7 +42,7 @@ function showActivation(st) {
       </div>
     </div>`);
     document.body.appendChild(el);
-    let tab = st.onlineAvailable ? 'online' : 'offline';
+    let tab = st.onlineAvailable || !st.offlineAvailable ? 'online' : 'offline';
     const setTab = (t) => {
       tab = t;
       el.querySelectorAll('#actTabs button').forEach((b) => b.classList.toggle('active', b.dataset.t === t));
@@ -71,7 +72,7 @@ function showActivation(st) {
         go.lastChild.textContent = 'Activar';
       }
     };
-    el.querySelector(st.onlineAvailable ? '#actSerial' : '#actKey').focus();
+    el.querySelector(tab === 'online' ? '#actSerial' : '#actKey').focus();
   });
 }
 

@@ -3,7 +3,6 @@
 //
 //   node tools/licencias.mjs claves
 //   node tools/licencias.mjs servidor https://<proyecto>.supabase.co/functions/v1/licencias
-//   node tools/licencias.mjs offline --equipo XXXXX-XXXXX-XXXXX-XXXXX --dias 30 --cliente "Juan"
 //   node tools/licencias.mjs crear --cantidad 5 --dias 30 --cliente "Juan" --plan Pro
 //   node tools/licencias.mjs listar [texto]
 //   node tools/licencias.mjs ver NXF-...
@@ -153,6 +152,10 @@ const commands = {
   },
 
   offline(args) {
+    const cfg = fs.readFileSync(CONFIG, 'utf8');
+    if (!/OFFLINE_KEYS = true/.test(cfg)) {
+      die('Las claves sin conexión están desactivadas (OFFLINE_KEYS = false en src/main/licensing/config.js). Crea seriales en línea con el panel o con "crear".');
+    }
     const machine = normalizeMachineId(args.equipo);
     if (!machine) die('--equipo debe ser el ID de equipo que muestra la app (XXXXX-XXXXX-XXXXX-XXXXX)');
     const d = duration(args);

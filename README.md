@@ -21,7 +21,7 @@ Capturas de la propia app con teléfonos de demostración.
 |---|---|
 | ![Centro de control](docs/capturas/01-dispositivos.png) Centro de control | ![Vista grande](docs/capturas/03-vista-grande.png) Doble clic: vista grande |
 | ![Inspector](docs/capturas/04b-inspector.png) Inspector de pantalla | ![Tema oscuro](docs/capturas/18-tema-oscuro.png) Tema oscuro y filtro por grupo |
-| ![Barras contraídas](docs/capturas/19-barras-contraidas.png) Menú y panel contraídos | ![Activación](docs/capturas/20-activacion.png) Activación de licencia |
+| ![Barras contraídas](docs/capturas/19-barras-contraidas.png) Menú y panel contraídos | ![Activación](docs/capturas/22-activacion-serial.png) Activación con serial |
 | ![Proxys](docs/capturas/07-proxys.png) Proxys y asignación por teléfono | ![Dispositivos con proxy](docs/capturas/08-dispositivos-con-proxy.png) Proxy visible en cada tarjeta |
 | ![Editor](docs/capturas/11-flujo-login-con-tabla.png) Editor de flujos por nodos | ![Ejecuciones](docs/capturas/13-ejecuciones.png) Ejecuciones e historial |
 | ![Programador](docs/capturas/14-programador.png) Programador | ![Ajustes](docs/capturas/17-ajustes.png) Ajustes |
@@ -101,12 +101,19 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 
 ## Licencias
 
-La app necesita una licencia para funcionar. Hay dos modos, y se pueden usar a la vez:
+La app necesita un **serial** para funcionar:
 
-- **Seriales en línea:** el servidor (Supabase) ata cada serial al primer PC que lo activa. Desde ahí puedes revocarlos, renovarlos o pasarlos a otro PC.
-- **Claves sin conexión:** las generas para el ID de equipo que te envía el cliente.
+- Lo creas en el **panel de licencias** (`admin/`), una página web con resumen, seriales y clientes.
+- Cada serial queda atado al primer PC que lo activa.
+- Desde el panel puedes renovarlo, revocarlo o liberarlo para pasarlo a otro PC.
+- La duración puede ser de N días desde la activación, hasta una fecha o permanente.
+- Las claves sin conexión están desactivadas.
 
-Las licencias pueden caducar o ser permanentes. Están firmadas con tu clave privada, así que nadie puede fabricarlas. Todos los pasos están en [docs/LICENCIAS.md](docs/LICENCIAS.md).
+Todos los pasos están en [docs/LICENCIAS.md](docs/LICENCIAS.md).
+
+| | |
+|---|---|
+| ![Panel: resumen](docs/capturas/panel-02-resumen.png) Panel: resumen | ![Panel: seriales](docs/capturas/panel-03-seriales.png) Panel: seriales |
 
 ## Escribir texto con acentos o emojis
 

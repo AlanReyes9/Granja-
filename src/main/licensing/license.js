@@ -27,10 +27,11 @@ export class LicenseManager extends EventEmitter {
    * @param {typeof fetch} [opts.fetch]
    */
   constructor({ dir, publicKey = defaults.PUBLIC_KEY, serverUrl = defaults.SERVER_URL, machineId = getMachineId,
-    now = Date.now, fetch: fetchImpl = globalThis.fetch, graceDays = defaults.GRACE_DAYS, appVersion = '' }) {
+    now = Date.now, fetch: fetchImpl = globalThis.fetch, graceDays = defaults.GRACE_DAYS, appVersion = '',
+    allowOffline = defaults.OFFLINE_KEYS }) {
     super();
     this.file = path.join(dir, 'licencia.json');
-    Object.assign(this, { publicKey, serverUrl, machineId, now, fetchImpl, graceDays, appVersion });
+    Object.assign(this, { publicKey, serverUrl, machineId, now, fetchImpl, graceDays, appVersion, allowOffline });
     this.saved = this.load();
     this.timer = null;
   }
@@ -50,6 +51,7 @@ export class LicenseManager extends EventEmitter {
     const p = verifyToken(token, this.publicKey);
     const now = this.now();
     if (p.v !== 1) throw new LicenseError('Versión de licencia no compatible', 'version');
+    if (p.k === 'offline' && !this.allowOffline) throw new LicenseError('Las claves sin conexión no están permitidas: activa la app con tu serial', 'offline-disabled');
     if (p.m !== this.machineId()) throw new LicenseError('Esta licencia es de otro equipo', 'machine');
     // Si el reloj está por detrás de la última fecha vista (o de la emisión), alguien lo ha atrasado.
     const maxSeen = Math.max(this.saved.maxSeen || 0, p.i || 0, p.chk || 0);
@@ -76,8 +78,8 @@ export class LicenseManager extends EventEmitter {
   /** Estado para la interfaz: activa o no, y por qué. */
   status() {
     this.touch();
-    const base = { machineId: this.machineId(), onlineAvailable: !!this.serverUrl, configured: !!this.publicKey };
-    if (!this.saved.token) return { ...base, active: false, reason: 'Introduce tu serial o tu clave de licencia' };
+    const base = { machineId: this.machineId(), onlineAvailable: !!this.serverUrl, offlineAvailable: !!this.allowOffline, configured: !!this.publicKey };
+    if (!this.saved.token) return { ...base, active: false, reason: this.allowOffline ? 'Introduce tu serial o tu clave de licencia' : 'Introduce el serial que te ha dado Nexus Dev' };
     try {
       const p = this.check(this.saved.token);
       const daysLeft = p.e == null ? null : Math.max(0, Math.ceil((p.e - this.now()) / DAY));
@@ -102,6 +104,7 @@ export class LicenseManager extends EventEmitter {
 
   /** Clave sin conexión generada por el vendedor para el ID de este equipo. */
   activateOffline(text) {
+    if (!this.allowOffline) throw new LicenseError('Las claves sin conexión no están permitidas: activa la app con tu serial', 'offline-disabled');
     const token = String(text || '').trim();
     const p = verifyToken(token, this.publicKey);
     if (p.k !== 'offline') throw new LicenseError('Esa clave no es una licencia sin conexión', 'kind');

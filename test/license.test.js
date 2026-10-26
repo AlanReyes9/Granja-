@@ -16,7 +16,7 @@ const PC2 = formatMachineId('equipo-2');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-lic-'));
 
 function manager({ machine = PC1, now = () => Date.now(), dir = tmp(), fetch, serverUrl = '' } = {}) {
-  return new LicenseManager({ dir, publicKey: keys.publicKey, machineId: () => machine, now, fetch, serverUrl, graceDays: 7 });
+  return new LicenseManager({ dir, publicKey: keys.publicKey, machineId: () => machine, now, fetch, serverUrl, graceDays: 7, allowOffline: true });
 }
 
 const offlineKey = (fields = {}) => signToken({ v: 1, k: 'offline', s: 'OFF-1', m: PC1, c: 'Ana', p: 'Pro', e: Date.now() + 30 * DAY, i: Date.now(), ...fields }, keys.privateKey);
@@ -143,7 +143,7 @@ test('en línea: sin conexión sigue funcionando durante el periodo de gracia', 
 test('herramienta del vendedor: claves y licencia sin conexión', () => {
   const dir = tmp();
   const config = path.join(dir, 'config.js');
-  fs.writeFileSync(config, "export const PUBLIC_KEY = '';\nexport const SERVER_URL = '';\n");
+  fs.writeFileSync(config, "export const PUBLIC_KEY = '';\nexport const SERVER_URL = '';\nexport const OFFLINE_KEYS = true;\n");
   const env = { ...process.env, NEXUS_LICENCIAS_DIR: path.join(dir, 'priv'), NEXUS_LICENCIAS_CONFIG: config };
   const run = (...a) => execFileSync(process.execPath, ['tools/licencias.mjs', ...a], { env, encoding: 'utf8' });
   run('claves');
@@ -152,10 +152,31 @@ test('herramienta del vendedor: claves y licencia sin conexión', () => {
   assert.match(fs.readFileSync(config, 'utf8'), /SERVER_URL = 'https:\/\/demo/);
   const out = run('offline', '--equipo', PC1.toLowerCase(), '--dias', '15', '--cliente', 'Marta');
   const token = out.match(/NXF1\.[\w-]+\.[\w-]+/)[0];
-  const m = new LicenseManager({ dir: tmp(), publicKey: pub, machineId: () => PC1 });
+  const m = new LicenseManager({ dir: tmp(), publicKey: pub, machineId: () => PC1, allowOffline: true });
   const st = m.activateOffline(token);
   assert.equal(st.client, 'Marta');
   assert.equal(st.daysLeft, 15);
   // Ejecutar "claves" otra vez no sustituye la clave privada.
   assert.match(run('claves'), /Ya existe/);
+});
+
+test('claves sin conexión desactivadas: la app las rechaza y la herramienta no las crea', () => {
+  const m = new LicenseManager({ dir: tmp(), publicKey: keys.publicKey, machineId: () => PC1, allowOffline: false });
+  assert.equal(m.status().offlineAvailable, false);
+  assert.throws(() => m.activateOffline(offlineKey()), /no están permitidas/);
+  // Una clave sin conexión guardada de antes también deja de valer.
+  const dir = tmp();
+  manager({ dir }).activateOffline(offlineKey());
+  const st = new LicenseManager({ dir, publicKey: keys.publicKey, machineId: () => PC1, allowOffline: false }).status();
+  assert.equal(st.active, false);
+  assert.equal(st.code, 'offline-disabled');
+  // La configuración real del proyecto las tiene desactivadas.
+  const cfg = fs.readFileSync('src/main/licensing/config.js', 'utf8');
+  assert.match(cfg, /OFFLINE_KEYS = false/);
+  const d = tmp();
+  const config = path.join(d, 'config.js');
+  fs.writeFileSync(config, "export const PUBLIC_KEY = '';\nexport const SERVER_URL = '';\nexport const OFFLINE_KEYS = false;\n");
+  const env = { ...process.env, NEXUS_LICENCIAS_DIR: path.join(d, 'priv'), NEXUS_LICENCIAS_CONFIG: config };
+  execFileSync(process.execPath, ['tools/licencias.mjs', 'claves'], { env });
+  assert.throws(() => execFileSync(process.execPath, ['tools/licencias.mjs', 'offline', '--equipo', PC1, '--dias', '5'], { env, stdio: 'pipe' }), /desactivadas/);
 });
