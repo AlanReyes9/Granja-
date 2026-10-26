@@ -7,6 +7,8 @@ export const state = {
   devices: [], settings: {}, workflows: [], schedules: [], deviceMeta: {}, tables: [], runs: [], health: {}, proxies: [],
   selected: new Set(),
   view: 'devices',
+  groupFilter: null, // null = todos; nombre de grupo o marcador de "sin grupo"
+  trFilter: null, // null | 'usb' | 'wifi' | 'otg'
 };
 
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -93,6 +95,9 @@ export function switchView(name) {
   $$('nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
   state.view = name;
+  const sec = $(`#view-${name}`);
+  $('#pageTitle').textContent = sec?.dataset.title || '';
+  $('#pageSub').textContent = name === 'devices' ? state.devicesSub || '' : '';
   window.dispatchEvent(new CustomEvent('view', { detail: name }));
 }
 

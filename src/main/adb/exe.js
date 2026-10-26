@@ -15,6 +15,8 @@ export class AdbExe {
       execFile(this.bin, args, { timeout, encoding, maxBuffer, windowsHide: true }, (err, stdout, stderr) => {
         if (err) {
           err.message = `${err.message}\n${stderr || ''}`.trim();
+          err.stdout = stdout;
+          err.stderr = stderr;
           return reject(err);
         }
         resolve(stdout);
@@ -41,8 +43,19 @@ export class AdbExe {
     return parseDevicesOutput(out);
   }
 
+  /**
+   * Ejecuta un comando en el teléfono. Las versiones modernas de adb devuelven el código de salida
+   * del comando remoto: un grep sin resultados o un comando que avisa por stderr no debe abortar
+   * un flujo, así que se devuelve su salida. Solo fallan los errores del propio adb (dispositivo
+   * desconectado, no autorizado...) y los tiempos de espera agotados.
+   */
   shell(serial, cmd, opts) {
-    return this.run(['-s', serial, 'shell', cmd], opts);
+    return this.run(['-s', serial, 'shell', cmd], opts).catch((err) => {
+      const stderr = String(err.stderr || '');
+      const adbError = /^(adb: )?error:/m.test(stderr) || /device '.*' not found|device offline|unauthorized|no devices/i.test(stderr);
+      if (typeof err.code === 'number' && !err.killed && !adbError) return `${err.stdout || ''}${stderr}`;
+      throw err;
+    });
   }
 
   execOut(serial, cmd, opts = {}) {

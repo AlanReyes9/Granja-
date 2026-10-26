@@ -13,7 +13,7 @@ class FakeDevice {
   async shell(cmd) {
     this.cmds.push(cmd);
     if (cmd === 'wm size') return 'Physical size: 1080x2400\n';
-    if (cmd.startsWith('uiautomator')) return this.ui;
+    if (cmd.includes('uiautomator dump')) return this.ui;
     if (cmd.startsWith('getprop')) return 'Pixel 7\n';
     return '';
   }
@@ -56,9 +56,15 @@ test('coordenadas en % y px', () => {
   assert.throws(() => resolveCoord('abc', 1080));
 });
 
-test('escape de input text', () => {
+test('escape de input text: el teléfono recibe exactamente el texto', async () => {
   assert.equal(escapeInputText('hola mundo'), 'hola%smundo');
-  assert.equal(escapeInputText('a&b'), 'a\\&b');
+  const { shellQuote } = await import('../src/main/devices.js');
+  const { execFileSync } = await import('node:child_process');
+  for (const text of ['Clave1000!', "it's a&b|c;d$e`f\\g\"h(i)*?#~"]) {
+    const cmd = `printf %s ${shellQuote(escapeInputText(text))}`;
+    const got = execFileSync('/bin/sh', ['-c', cmd]).toString().replace(/%s/g, ' ');
+    assert.equal(got, text);
+  }
 });
 
 test('parse adb devices -l', () => {
@@ -131,7 +137,7 @@ test('motor: bucle, variables, condición y toques', async () => {
 
 test('motor: tocar texto con rama de no encontrado', async () => {
   const dev = new FakeDevice();
-  dev.ui = '<node text="Aceptar" bounds="[0,0][100,100]"/>';
+  dev.ui = '<hierarchy><node text="Aceptar" bounds="[0,0][100,100]"/></hierarchy>';
   const { engine } = makeEngine(dev);
   const graph = buildGraph([
     { type: 'start', x: 0, y: 0 },
@@ -140,7 +146,7 @@ test('motor: tocar texto con rama de no encontrado', async () => {
     { type: 'log', params: { message: 'no estaba' }, x: 0, y: 0 },
   ], [[0, 0, 1], [1, 0, 2], [2, 1, 3]]);
   const { run, logs } = await runToEnd(engine, { id: 'w', name: 't', graph });
-  assert.equal(run.devices.S1.status, 'ok');
+  assert.equal(run.devices.S1.status, 'ok', JSON.stringify(logs.filter((l) => l.level === 'error')));
   assert.ok(dev.cmds.some((c) => /^input tap \d+ \d+$/.test(c)));
   assert.ok(logs.some((l) => l.message === 'no estaba'));
 });

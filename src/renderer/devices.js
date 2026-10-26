@@ -1,11 +1,22 @@
 // Vista de dispositivos: cuadrícula en vivo, control táctil (individual o sincronizado) y acciones masivas.
-import { state, api, $, $$, esc, h, call, toast, modal, showResults, deviceName, icon } from './core.js';
+import { state, api, $, $$, esc, h, call, toast, modal, showResults, deviceName, icon, switchView } from './core.js';
 import { openAssignModal } from './proxies.js';
 
 const cards = new Map(); // serial -> elemento
 const visible = new Set();
 const lastShot = new Map(); // serial -> timestamp
 let observer;
+const NO_GROUP = '\u0000sin-grupo';
+// Preferencias de visualización (por equipo): tamaño de miniaturas y vista grande, calidad y fotogramas.
+const view = { thumb: 120, big: 680, quality: 70, fps: 1 };
+
+function loadViewPrefs() {
+  try { Object.assign(view, JSON.parse(localStorage.getItem('granja.view') || '{}')); } catch {}
+}
+function saveViewPrefs() {
+  try { localStorage.setItem('granja.view', JSON.stringify(view)); } catch {}
+}
+const shotInterval = () => Math.round(1000 / Math.max(1, Number(view.fps) || 1));
 
 export function selectedSerials({ fallbackAll = false } = {}) {
   const ready = state.devices.filter((d) => d.state === 'device').map((d) => d.serial);
@@ -13,15 +24,25 @@ export function selectedSerials({ fallbackAll = false } = {}) {
   return sel.length || !fallbackAll ? sel : ready;
 }
 
+/** Orden fijo de todos los teléfonos (por nombre) para numerarlos como en la granja física. */
+function ordered() {
+  return [...state.devices].sort((a, b) => deviceName(a.serial).localeCompare(deviceName(b.serial), undefined, { numeric: true }));
+}
+
+function inGroup(serial, g) {
+  const grp = state.deviceMeta[serial]?.group || '';
+  return g === NO_GROUP ? !grp : grp === g;
+}
+
 function filtered() {
   const q = $('#devSearch').value.trim().toLowerCase();
-  const g = $('#devGroupFilter').value;
-  return state.devices.filter((d) => {
+  return ordered().filter((d) => {
     const m = state.deviceMeta[d.serial] || {};
-    if (g && (m.group || '') !== g) return false;
+    if (state.groupFilter != null && !inGroup(d.serial, state.groupFilter)) return false;
+    if (state.trFilter && d.transport !== state.trFilter) return false;
     if (!q) return true;
-    return [d.serial, d.model, m.name, m.group].some((x) => String(x || '').toLowerCase().includes(q));
-  }).sort((a, b) => deviceName(a.serial).localeCompare(deviceName(b.serial), undefined, { numeric: true }));
+    return [d.serial, d.model, m.name, m.group, m.proxy].some((x) => String(x || '').toLowerCase().includes(q));
+  });
 }
 
 function runningOn(serial) {
@@ -34,23 +55,26 @@ function runningOn(serial) {
 
 function createCard(d) {
   const el = h(`<div class="card" data-serial="${esc(d.serial)}">
-    <div class="head"><input type="checkbox" class="sel" /><span class="name"></span><span class="chip tr"></span></div>
+    <div class="head" title="Clic para seleccionar · Doble clic para renombrar"><span class="idx"></span><span class="name"></span><input type="checkbox" class="sel" /></div>
     <div class="screen" title="Clic: tocar · Arrastrar: deslizar · Doble clic: abrir en grande · Clic derecho: atrás">
-      <img alt="" /><div class="msg"></div><div class="run-badge hidden"></div>
-      <div class="hover-ctrl">
-        <button data-k="4" title="Atrás">${icon('back', 13)}</button>
-        <button data-k="3" title="Inicio">${icon('home', 13)}</button>
-        <button data-k="187" title="Recientes">${icon('recent', 13)}</button>
-        <button class="open" title="Abrir en grande">${icon('maximize', 13)}</button>
-      </div>
+      <img alt="" /><div class="msg"></div><div class="run-badge hidden"></div><div class="tags"></div>
     </div>
-    <div class="meta"><span class="info"></span><span class="bat"></span></div>
+    <div class="navbar">
+      <button data-k="4" title="Atrás">${icon('nav-back', 12)}</button>
+      <button data-k="3" title="Inicio">${icon('nav-home', 12)}</button>
+      <button data-k="187" title="Recientes">${icon('nav-recent', 12)}</button>
+      <button class="open" title="Abrir en grande">${icon('maximize', 12)}</button>
+    </div>
+    <div class="meta"></div>
   </div>`);
   const serial = d.serial;
-  el.querySelector('.sel').onchange = (e) => { e.target.checked ? state.selected.add(serial) : state.selected.delete(serial); updateSelection(); };
-  el.querySelector('.head .name').ondblclick = () => renameOne(serial);
-  el.querySelectorAll('.hover-ctrl button').forEach((b) => b.addEventListener('mousedown', (e) => e.stopPropagation()));
-  el.querySelectorAll('.hover-ctrl button').forEach((b) => b.addEventListener('mouseup', (e) => e.stopPropagation()));
+  const toggle = (on) => { (on ?? !state.selected.has(serial)) ? state.selected.add(serial) : state.selected.delete(serial); updateSelection(); };
+  el.querySelector('.sel').onchange = (e) => toggle(e.target.checked);
+  el.querySelector('.head').onclick = (e) => {
+    if (e.target.classList.contains('sel') || e.detail > 1) return;
+    if (state.devices.find((x) => x.serial === serial)?.state === 'device') toggle();
+  };
+  el.querySelector('.head').ondblclick = () => renameOne(serial);
   el.querySelectorAll('[data-k]').forEach((b) => (b.onclick = () => call('key', targets(serial), b.dataset.k)));
   el.querySelector('.open').onclick = () => openDetails(serial);
   bindTouch(el.querySelector('.screen'), serial, { onDouble: () => openDetails(serial) });
@@ -58,38 +82,67 @@ function createCard(d) {
   return el;
 }
 
-function updateCard(el, d) {
+function updateCard(el, d, num) {
   const meta = state.deviceMeta[d.serial] || {};
   const hl = state.health[d.serial] || {};
+  const ready = d.state === 'device';
+  const run = runningOn(d.serial);
   el.classList.toggle('selected', state.selected.has(d.serial));
   el.querySelector('.sel').checked = state.selected.has(d.serial);
-  el.querySelector('.sel').disabled = d.state !== 'device';
+  el.querySelector('.sel').disabled = !ready;
+  const idx = el.querySelector('.idx');
+  idx.textContent = String(num).padStart(2, '0');
+  idx.className = `idx${!ready ? ' off' : run ? ' busy' : ''}`;
   el.querySelector('.name').textContent = meta.name || d.model || d.serial;
-  el.querySelector('.name').title = `${d.serial}${meta.group ? `\nGrupo: ${meta.group}` : ''}${meta.proxy ? `\nProxy: ${meta.proxy}` : ''}\nDoble clic para renombrar`;
-  const tr = el.querySelector('.tr');
-  tr.className = `chip tr ${d.transport}`;
-  tr.textContent = d.transport === 'otg' ? 'OTG' : d.transport === 'wifi' ? 'Wi-Fi' : 'USB';
-  const run = runningOn(d.serial);
+  el.querySelector('.head').title = `${d.serial}${meta.group ? `\nGrupo: ${meta.group}` : ''}${meta.proxy ? `\nProxy: ${meta.proxy}` : ''}\nClic para seleccionar · Doble clic para renombrar`;
   const badge = el.querySelector('.run-badge');
   badge.classList.toggle('hidden', !run);
   badge.textContent = run;
-  el.querySelector('.info').innerHTML = meta.proxy
-    ? `<span class="px" title="Proxy asignado: ${esc(meta.proxy)}">${icon('shield', 11)}<span class="t">${esc(meta.proxy)}</span></span>`
-    : `<span class="t">${esc(meta.group || d.model || '')}</span>`;
-  const bat = el.querySelector('.bat');
-  bat.innerHTML = hl.battery != null
-    ? `<span class="${hl.battery < 20 ? 'low' : ''}" title="${hl.temperature != null ? `${hl.temperature} °C` : ''}">${icon(hl.charging ? 'bolt' : 'battery', 11)}${hl.battery}%</span>`
-    : '';
+  const tr = d.transport === 'otg' ? 'OTG' : d.transport === 'wifi' ? 'Wi-Fi' : 'USB';
+  el.querySelector('.tags').innerHTML = `<span>${tr}</span>${hl.battery != null
+    ? `<span class="${hl.battery < 20 ? 'low' : ''}" title="${hl.temperature != null ? `${hl.temperature} °C` : ''}">${icon(hl.charging ? 'bolt' : 'battery', 9)}${hl.battery}%</span>` : ''}`;
+  const metaText = meta.proxy || meta.group || '';
+  el.querySelector('.meta').innerHTML = metaText
+    ? `${meta.proxy ? icon('shield', 10) : icon('layers', 10)}<span class="t" title="${esc(metaText)}">${esc(metaText)}</span>` : '';
   const msg = el.querySelector('.msg');
   if (d.state === 'unauthorized') msg.textContent = 'Acepta "Permitir depuración USB" en el teléfono';
   else if (d.state === 'offline') msg.textContent = 'Sin conexión. Reconecta el cable o reinicia ADB.';
-  else if (d.state !== 'device') msg.textContent = `Estado: ${d.state}`;
+  else if (!ready) msg.textContent = `Estado: ${d.state}`;
   else if (!el.querySelector('img').src) msg.textContent = $('#liveView').checked ? 'Cargando…' : 'Vista en vivo desactivada';
   else msg.textContent = '';
 }
 
+function renderGroups() {
+  const all = state.devices;
+  const sel = (list) => list.filter((d) => state.selected.has(d.serial)).length;
+  const names = [...new Set(Object.entries(state.deviceMeta).filter(([s]) => all.some((d) => d.serial === s)).map(([, m]) => m.group).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const rows = [{ key: null, label: 'Todos', list: all }];
+  for (const g of names) rows.push({ key: g, label: g, list: all.filter((d) => inGroup(d.serial, g)) });
+  const ungrouped = all.filter((d) => inGroup(d.serial, NO_GROUP));
+  if (names.length && ungrouped.length) rows.push({ key: NO_GROUP, label: 'Sin grupo', list: ungrouped });
+  const box = $('#groupList');
+  box.innerHTML = '';
+  for (const r of rows) {
+    const row = h(`<div class="group-row ${state.groupFilter === r.key ? 'active' : ''}">
+      ${icon('chevron-right', 14, 'chev')}<span class="gname">${esc(r.label)}</span><span class="gcount">(${sel(r.list)}/${r.list.length})</span>
+      <button class="ghost icon-only sel-group" title="Seleccionar todos los de este grupo">${icon('select', 14)}</button></div>`);
+    row.onclick = () => { state.groupFilter = state.groupFilter === r.key && r.key !== null ? null : r.key; renderDevices(); };
+    row.querySelector('.sel-group').onclick = (e) => {
+      e.stopPropagation();
+      const ready = r.list.filter((d) => d.state === 'device').map((d) => d.serial);
+      const allSel = ready.every((s) => state.selected.has(s));
+      ready.forEach((s) => (allSel ? state.selected.delete(s) : state.selected.add(s)));
+      updateSelection();
+    };
+    box.appendChild(row);
+  }
+  $$('#trFilter button').forEach((b) => b.classList.toggle('active', (b.dataset.tr || '') === (state.trFilter || '')));
+}
+
 export function renderDevices() {
   const list = filtered();
+  const numbers = new Map(ordered().map((d, i) => [d.serial, i + 1]));
   const grid = $('#deviceGrid');
   const keep = new Set(list.map((d) => d.serial));
   for (const [serial, el] of cards) {
@@ -101,30 +154,43 @@ export function renderDevices() {
     if (!el) { el = createCard(d); cards.set(d.serial, el); }
     el.style.display = '';
     if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null);
-    updateCard(el, d);
+    updateCard(el, d, numbers.get(d.serial));
   });
   $('#emptyDevices').classList.toggle('show', state.devices.length === 0);
   $('#adbHint').textContent = state.adbVersion ? `${state.adbVersion} · ${state.adbPath}` : 'ADB no está instalado: puedes descargarlo en Ajustes.';
-  const groups = [...new Set(Object.values(state.deviceMeta).map((m) => m.group).filter(Boolean))].sort();
-  const gf = $('#devGroupFilter');
-  const cur = gf.value;
-  gf.innerHTML = `<option value="">Todos los grupos</option>${groups.map((g) => `<option ${g === cur ? 'selected' : ''}>${esc(g)}</option>`).join('')}`;
   const ready = state.devices.filter((d) => d.state === 'device').length;
-  const byTr = (t) => state.devices.filter((d) => d.transport === t).length;
-  $('#devSummary').textContent = state.devices.length
-    ? `${ready} de ${state.devices.length} listos · ${byTr('usb')} USB · ${byTr('wifi')} Wi-Fi${byTr('otg') ? ` · ${byTr('otg')} OTG` : ''}`
-    : 'Sin dispositivos';
+  $('#devSummary').textContent = list.length !== state.devices.length ? `Mostrando ${list.length} de ${state.devices.length}` : '';
+  const sub = state.devices.length ? `${ready} de ${state.devices.length} dispositivos listos` : 'Sin dispositivos conectados';
+  if (state.view === 'devices') $('#pageSub').textContent = sub;
+  state.devicesSub = sub;
+  renderGroups();
+  renderOtg();
   updateSelection(false);
+}
+
+function renderOtg() {
+  const otg = state.devices.filter((d) => d.transport === 'otg');
+  $('#otgToggle').checked = !!state.settings.otgEnabled;
+  $('#otgList').innerHTML = otg.length
+    ? otg.map((d) => `<div class="item"><span>${esc(deviceName(d.serial))}</span><span class="muted">${esc(d.state)}</span></div>`).join('')
+    : `<p class="muted small">${state.settings.otgEnabled ? 'No hay teléfonos detectados por el motor USB directo.' : 'Motor desactivado.'}</p>`;
 }
 
 function updateSelection(rerender = true) {
   const n = selectedSerials().length;
-  $('#selCount').textContent = `${n} seleccionado${n === 1 ? '' : 's'}`;
+  const ready = state.devices.filter((d) => d.state === 'device').length;
+  $('#selCount').textContent = n ? `${n} seleccionado${n === 1 ? '' : 's'}` : 'Seleccionar todo';
+  const all = $('#selAll');
+  all.checked = n > 0 && n === ready;
+  all.indeterminate = n > 0 && n < ready;
   const wfLabel = $('#wfRun span');
   if (wfLabel) wfLabel.textContent = n ? `Ejecutar en ${n}` : 'Ejecutar en todos';
-  if (rerender) for (const [serial, el] of cards) {
-    el.classList.toggle('selected', state.selected.has(serial));
-    el.querySelector('.sel').checked = state.selected.has(serial);
+  if (rerender) {
+    for (const [serial, el] of cards) {
+      el.classList.toggle('selected', state.selected.has(serial));
+      el.querySelector('.sel').checked = state.selected.has(serial);
+    }
+    renderGroups();
   }
 }
 
@@ -196,10 +262,10 @@ async function refreshShot(serial, force = false) {
   const el = cards.get(serial);
   const d = state.devices.find((x) => x.serial === serial);
   if (!el || !d || d.state !== 'device') return;
-  if (!force && Date.now() - (lastShot.get(serial) || 0) < (state.settings.screenshotInterval || 3000)) return;
+  if (!force && Date.now() - (lastShot.get(serial) || 0) < shotInterval()) return;
   lastShot.set(serial, Date.now());
   try {
-    const shot = await api.call('screenshot', serial, Math.max(240, Number($('#thumbSize').value) * 1.5));
+    const shot = await api.call('screenshot', serial, Math.max(200, Math.round(view.thumb * 1.6)), view.quality);
     el.querySelector('img').src = shot.data;
     el.querySelector('.msg').textContent = '';
   } catch {
@@ -212,7 +278,7 @@ function startLiveLoop() {
   setInterval(() => {
     if (!$('#liveView').checked || state.view !== 'devices' || document.hidden) return;
     const limit = state.settings.thumbnailConcurrency || 6;
-    const queue = [...visible].filter((s) => Date.now() - (lastShot.get(s) || 0) >= (state.settings.screenshotInterval || 3000))
+    const queue = [...visible].filter((s) => Date.now() - (lastShot.get(s) || 0) >= shotInterval())
       .sort((a, b) => (lastShot.get(a) || 0) - (lastShot.get(b) || 0));
     while (busy < limit && queue.length) {
       const s = queue.shift();
@@ -263,12 +329,13 @@ export async function openDetails(serial) {
       <div class="inline-row"><select id="dApps"></select><button id="dOpen">Abrir</button><button id="dStop">Cerrar</button><button id="dUninstall" class="danger">Desinstalar</button></div>
     </div></div>`;
   modal({ title: deviceName(serial), html, okText: '', cancelText: 'Cerrar', wide: true, onMount: async (el) => {
+    el.style.setProperty('--big', `${view.big}px`);
     const screen = el.querySelector('.screen');
     let refresh;
     bindTouch(screen, serial, { live: () => { clearTimeout(timer); refresh(); } });
     refresh = async () => {
       try {
-        const shot = await api.call('screenshot', serial, 900);
+        const shot = await api.call('screenshot', serial, Math.round(view.big * 0.75), Math.max(view.quality, 80));
         screen.querySelector('img').src = shot.data;
         screen.querySelector('.msg').textContent = '';
       } catch {}
@@ -435,26 +502,57 @@ export function initDevices() {
     }
   }, { root: $('#deviceGrid') });
 
+  loadViewPrefs();
   $('#devSearch').oninput = () => renderDevices();
-  $('#devGroupFilter').onchange = () => renderDevices();
-  $('#btnSelectAll').onclick = () => { filtered().filter((d) => d.state === 'device').forEach((d) => state.selected.add(d.serial)); updateSelection(); };
-  $('#btnSelectNone').onclick = () => { state.selected.clear(); updateSelection(); };
+  $('#selAll').onchange = (e) => {
+    if (e.target.checked) filtered().filter((d) => d.state === 'device').forEach((d) => state.selected.add(d.serial));
+    else state.selected.clear();
+    updateSelection();
+  };
   $('#btnConnect').onclick = openConnect;
+  $('#btnCcSettings').onclick = () => switchView('settings');
   $('#liveView').onchange = () => renderDevices();
-  const applySize = () => document.documentElement.style.setProperty('--thumb', `${$('#thumbSize').value}px`);
-  $('#thumbSize').oninput = applySize;
-  try { $('#thumbSize').value = localStorage.getItem('thumb2') || 120; } catch {}
-  $('#thumbSize').onchange = () => { try { localStorage.setItem('thumb2', $('#thumbSize').value); } catch {} };
-  applySize();
-  $$('.actionbar [data-act]').forEach((b) => (b.onclick = () => actions[b.dataset.act]()));
+  $$('#ccTabs [data-tab]').forEach((b) => (b.onclick = () => {
+    $$('#ccTabs [data-tab]').forEach((x) => x.classList.toggle('active', x === b));
+    $$('.cc-tab').forEach((t) => t.classList.toggle('hidden', t.dataset.tab !== b.dataset.tab));
+  }));
+  $('#ccCollapse').onclick = () => $('.cc').classList.toggle('collapsed');
+  $$('#trFilter button').forEach((b) => (b.onclick = () => { state.trFilter = b.dataset.tr || null; renderDevices(); }));
+  $('#btnNewGroup').onclick = async () => {
+    const sel = selectedSerials();
+    if (!sel.length) return toast('Selecciona los teléfonos que formarán el grupo', 'warn');
+    const v = await modal({ title: `Nuevo grupo con ${sel.length} dispositivo(s)`, fields: [{ key: 'g', label: 'Nombre del grupo', placeholder: 'Granja A' }], okText: 'Crear grupo' });
+    if (!v?.g?.trim()) return;
+    state.deviceMeta = await call('batchMeta', sel, { group: v.g.trim() });
+    renderDevices();
+  };
+  $('#otgToggle').onchange = async (e) => {
+    state.settings = await call('saveSettings', { otgEnabled: e.target.checked });
+    toast(e.target.checked ? 'Motor USB directo activado' : 'Motor USB directo desactivado');
+    renderDevices();
+  };
+  // Deslizadores de pantalla
+  const sliders = { thumbSize: 'thumb', bigSize: 'big', quality: 'quality', fps: 'fps' };
+  for (const [id, key] of Object.entries(sliders)) {
+    const input = $(`#${id}`);
+    input.value = view[key];
+    input.oninput = () => {
+      view[key] = Number(input.value);
+      if (key === 'thumb') document.documentElement.style.setProperty('--thumb', `${view.thumb}px`);
+    };
+    input.onchange = () => { saveViewPrefs(); if (key === 'quality') lastShot.clear(); };
+    input.title = { thumb: 'Ancho de cada pantalla en la cuadrícula', big: 'Alto de la pantalla al abrir un teléfono en grande', quality: 'Calidad de imagen de las capturas', fps: 'Capturas por segundo de cada teléfono' }[key];
+  }
+  document.documentElement.style.setProperty('--thumb', `${view.thumb}px`);
+  $$('.cc-toolbar [data-act]').forEach((b) => (b.onclick = () => actions[b.dataset.act]()));
 
   // Arrastrar y soltar: los APK se instalan y el resto se envía a /sdcard/Download.
-  const view = $('#view-devices');
+  const area = $('#view-devices');
   let depth = 0;
-  view.addEventListener('dragenter', (e) => { e.preventDefault(); depth++; $('#dropHint').classList.add('show'); });
-  view.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; $('#dropHint').classList.remove('show'); } });
-  view.addEventListener('dragover', (e) => e.preventDefault());
-  view.addEventListener('drop', async (e) => {
+  area.addEventListener('dragenter', (e) => { e.preventDefault(); depth++; $('#dropHint').classList.add('show'); });
+  area.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; $('#dropHint').classList.remove('show'); } });
+  area.addEventListener('dragover', (e) => e.preventDefault());
+  area.addEventListener('drop', async (e) => {
     e.preventDefault(); depth = 0; $('#dropHint').classList.remove('show');
     const sel = await needSelection(); if (!sel) return;
     const files = [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean);

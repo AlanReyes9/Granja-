@@ -33,7 +33,8 @@ function logVisible(e) {
   const lvl = $('#logLevel').value;
   const q = $('#logFilter').value.trim().toLowerCase();
   if (lvl === 'error' && e.level !== 'error') return false;
-  if (lvl === 'warn' && e.level === 'info') return false;
+  if (lvl === 'warn' && (e.level === 'info' || e.level === 'step')) return false;
+  if (lvl === 'nosteps' && e.level === 'step') return false;
   return !q || `${deviceName(e.serial)} ${e.message}`.toLowerCase().includes(q);
 }
 
@@ -145,7 +146,6 @@ const SETTINGS_SCHEMA = [
     { key: 'scrcpyPath', label: 'Ruta de scrcpy.exe (vacío = automática)', type: 'file' },
   ], extra: '<div class="inline"><button id="dlScrcpy"><i data-icon="download"></i>Descargar scrcpy</button><button id="openShots" class="ghost"><i data-icon="folder"></i>Carpeta de capturas</button></div>' },
   { legend: 'Rendimiento', fields: [
-    { key: 'screenshotInterval', label: 'Intervalo de refresco de miniaturas (ms)', type: 'number' },
     { key: 'thumbnailConcurrency', label: 'Capturas simultáneas máximas', type: 'number' },
     { key: 'runConcurrency', label: 'Dispositivos en paralelo por ejecución', type: 'number' },
     { key: 'runStaggerMs', label: 'Retraso escalonado entre dispositivos (ms)', type: 'number' },

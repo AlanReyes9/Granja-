@@ -24,6 +24,16 @@ export function compileDrawflow(exported) {
   return { nodes, startIds };
 }
 
+/** Resumen corto de los parámetros de un paso para el registro, p. ej. ' (x: 50%, y: 80%)'. */
+function stepSummary(def, params, vars) {
+  if (!def?.params.length) return '';
+  const parts = def.params.filter((p) => p.type !== 'checkbox')
+    .map((p) => [p, String(A.renderTemplate(params[p.key] ?? p.default, vars))])
+    .filter(([, v]) => v !== '').slice(0, 3)
+    .map(([p, v]) => `${p.label.split(' (')[0].toLowerCase()}: ${v.slice(0, 40)}`);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
+
 export class Engine extends EventEmitter {
   constructor({ devices, store, notifier, screenshotsDir, proxies }) {
     super();
@@ -48,6 +58,9 @@ export class Engine extends EventEmitter {
   start(workflow, serials, { concurrency = 10, staggerMs = 0, source = 'manual' } = {}) {
     const graph = compileDrawflow(workflow.graph);
     if (!graph.startIds.length) throw new Error('El flujo necesita un nodo "Inicio"');
+    if (graph.startIds.every((id) => !graph.nodes[id].next.flat().length)) {
+      throw new Error('El nodo "Inicio" no está conectado a ningún otro nodo: arrastra desde su punto de salida hasta el siguiente nodo');
+    }
     if (!serials.length) throw new Error('No hay dispositivos seleccionados');
     const id = `run-${Date.now().toString(36)}-${++this.runCounter}`;
     const controller = new AbortController();
@@ -77,6 +90,13 @@ export class Engine extends EventEmitter {
       setTimeout(() => { this.runs.delete(id); this.emit('runs', this.listRuns()); }, 10 * 60 * 1000).unref?.();
     });
     return id;
+  }
+
+  /** Avisa a la interfaz del progreso sin saturarla (como mucho cada 150 ms). */
+  emitRunsSoon() {
+    if (this.runsTimer) return;
+    this.runsTimer = setTimeout(() => { this.runsTimer = null; this.emit('runs', this.listRuns()); }, 150);
+    this.runsTimer.unref?.();
   }
 
   stop(runId) {
@@ -126,12 +146,25 @@ export class Engine extends EventEmitter {
         if (++steps > MAX_STEPS) throw new Error('Demasiados pasos (¿bucle infinito?)');
         const node = graph.nodes[stack.shift()];
         if (!node) continue;
-        state.step = NODE_MAP[node.type]?.label || node.type;
+        const def = NODE_MAP[node.type];
+        const label = def?.label || node.type;
+        state.step = label;
         state.nodeId = node.id;
-        if (steps % 5 === 1) this.emit('runs', this.listRuns());
-        const outIndex = await this.execNode(node, { device, vars, signal, run, serial, loopCounters, index });
+        this.emitRunsSoon();
+        if (node.type !== 'start' && node.type !== 'log') this.log(run.id, serial, 'step', `${label}${stepSummary(def, node.params, vars)}`);
+        let outIndex;
+        try {
+          outIndex = await this.execNode(node, { device, vars, signal, run, serial, loopCounters, index });
+        } catch (e) {
+          if (signal.aborted) throw e;
+          throw new Error(`Error en "${label}": ${e.message.split('\n')[0]}`);
+        }
         if (outIndex == null || outIndex < 0) continue;
-        stack.unshift(...(node.next[outIndex] || []));
+        const next = node.next[outIndex] || [];
+        if (!next.length && def?.outputs.length > 1 && node.next.some((n) => n.length)) {
+          this.log(run.id, serial, 'warn', `"${label}" salió por "${def.outputs[outIndex]}", que no está conectada: el flujo termina aquí`);
+        }
+        stack.unshift(...next);
       }
       state.status = 'ok';
       this.log(run.id, serial, 'info', 'Flujo completado');
@@ -228,7 +261,7 @@ export class Engine extends EventEmitter {
         return found ? 0 : 1;
       }
       case 'read_text': {
-        const found = A.findNode(await A.dumpUi(device), { id: p.id });
+        const found = A.findNode(await A.dumpUi(device, signal), { id: p.id });
         if (!found) return 1;
         vars[p.var || 'texto'] = found.text || found.desc;
         return 0;
@@ -252,7 +285,11 @@ export class Engine extends EventEmitter {
         return 0;
       }
 
-      case 'open_app': await device.shell(`monkey -p ${p.package} -c android.intent.category.LAUNCHER 1`); return 0;
+      case 'open_app': {
+        const out = await device.shell(`monkey -p ${p.package} -c android.intent.category.LAUNCHER 1`);
+        if (/No activities found|monkey aborted|Error/i.test(out)) throw new Error(`La app ${p.package} no está instalada o no se puede abrir`);
+        return 0;
+      }
       case 'stop_app': await device.shell(`am force-stop ${p.package}`); return 0;
       case 'clear_app': await device.shell(`pm clear ${p.package}`); return 0;
       case 'if_app': return (await A.foregroundPackage(device)) === p.package ? 0 : 1;
@@ -273,14 +310,24 @@ export class Engine extends EventEmitter {
         return 0;
       }
       case 'wake_unlock': {
-        await device.shell('input keyevent 224');
-        await A.sleep(400, signal);
-        const [x, y1] = await A.resolvePoint(device, '50%', '85%');
-        const [, y2] = await A.resolvePoint(device, '50%', '30%');
-        await device.shell(`input swipe ${x} ${y1} ${x} ${y2} 250`);
-        if (p.pin) {
-          await A.sleep(600, signal);
-          await device.shell(`input text ${p.pin.replace(/\D/g, '')} && input keyevent 66`);
+        // Solo se desliza si hay pantalla de bloqueo: en un teléfono ya desbloqueado, deslizar hacia arriba
+        // abre el cajón de apps y estropea el resto del flujo.
+        let st = await A.screenState(device);
+        if (st.asleep) {
+          await device.shell('input keyevent 224');
+          await A.sleep(700, signal);
+          st = await A.screenState(device);
+        }
+        if (st.locked) {
+          const [x, y1] = await A.resolvePoint(device, '50%', '85%');
+          const [, y2] = await A.resolvePoint(device, '50%', '30%');
+          await device.shell(`input swipe ${x} ${y1} ${x} ${y2} 250`);
+          if (p.pin) {
+            await A.sleep(700, signal);
+            await device.shell(`input text ${p.pin.replace(/\D/g, '')}; input keyevent 66`);
+          }
+          await A.sleep(500, signal);
+          log('Pantalla desbloqueada');
         }
         return 0;
       }

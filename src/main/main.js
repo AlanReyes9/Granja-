@@ -126,14 +126,21 @@ const handlers = {
   // Dispositivos
   refreshDevices: () => devices.refresh(),
   restartAdb: async () => { await adb.killServer(); await adb.startServer(); await devices.refresh(); },
-  screenshot: async (serial, width = 360) => {
+  screenshot: async (serial, width = 360, quality = 72) => {
     const png = await devices.get(serial).screencapPng();
     const img = nativeImage.createFromBuffer(png);
     // Una captura cortada (cable flojo, teléfono ocupado) no se puede decodificar: se descarta.
     if (img.isEmpty()) throw new Error('Captura de pantalla incompleta');
     const size = img.getSize();
     const out = width && size.width > width ? img.resize({ width, quality: 'good' }) : img;
-    return { data: `data:image/jpeg;base64,${out.toJPEG(72).toString('base64')}`, width: size.width, height: size.height };
+    return { data: `data:image/jpeg;base64,${out.toJPEG(Math.min(95, Math.max(20, Number(quality) || 72))).toString('base64')}`, width: size.width, height: size.height };
+  },
+  // Inspector: captura + elementos de la pantalla (uiautomator) para construir flujos.
+  inspect: async (serial) => {
+    const { dumpUi } = await import('./automation/actions.js');
+    const d = devices.get(serial);
+    const [shot, nodes, size] = await Promise.all([handlers.screenshot(serial, 720, 85), dumpUi(d), d.getScreenSize()]);
+    return { shot, nodes, size };
   },
   saveScreenshot: async (serial) => {
     const name = (store.get('deviceMeta')[serial]?.name || serial).replace(/[^\w.-]+/g, '_');

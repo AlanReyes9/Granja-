@@ -15,7 +15,8 @@ Capturas de la propia app con teléfonos de demostración.
 
 | | |
 |---|---|
-| ![Dispositivos](docs/capturas/01-dispositivos.png) Cuadrícula de dispositivos | ![Vista grande](docs/capturas/03-vista-grande.png) Doble clic: vista grande |
+| ![Centro de control](docs/capturas/01-dispositivos.png) Centro de control | ![Vista grande](docs/capturas/03-vista-grande.png) Doble clic: vista grande |
+| ![Inspector](docs/capturas/04b-inspector.png) Inspector de pantalla | ![Tema oscuro](docs/capturas/18-tema-oscuro.png) Tema oscuro y filtro por grupo |
 | ![Proxys](docs/capturas/07-proxys.png) Proxys y asignación por teléfono | ![Dispositivos con proxy](docs/capturas/08-dispositivos-con-proxy.png) Proxy visible en cada tarjeta |
 | ![Editor](docs/capturas/11-flujo-login-con-tabla.png) Editor de flujos por nodos | ![Ejecuciones](docs/capturas/13-ejecuciones.png) Ejecuciones e historial |
 | ![Programador](docs/capturas/14-programador.png) Programador | ![Ajustes](docs/capturas/17-ajustes.png) Ajustes |
@@ -35,6 +36,13 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 > Motor OTG en Windows: el teléfono tiene que usar un driver WinUSB (el *Google USB Driver* lo es) y `adb.exe` no debe tenerlo abierto (usa *Reiniciar ADB* o cierra el servidor).
 
 ## Funciones
+
+**Centro de control**
+- Tema claro (por defecto) u oscuro.
+- Panel lateral con deslizadores de vista grande, miniaturas, calidad y fotogramas por segundo, filtro USB / Wi-Fi / OTG y lista de grupos con contadores (seleccionados / total).
+- Cada teléfono lleva su número, su barra de navegación Android (atrás, inicio, recientes), su conexión, su batería y su proxy o grupo.
+- **Inspector**: muestra los elementos de la pantalla de un teléfono (texto, resource-id, posición en %) para saber qué poner en los nodos *Tocar texto*, *Tocar por resource-id* o *Tocar*.
+- **Monitor de tareas**: acceso directo a las ejecuciones en curso.
 
 **Granja y control**
 - Cuadrícula compacta con la pantalla de cada teléfono en vivo; el tamaño se ajusta con un deslizador.
@@ -62,7 +70,9 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - *Sistema:* shell con la salida guardada en una variable, despertar y desbloquear con PIN, proxy, proxy asignado, rotar proxy, **modo avión para rotar IP**, Wi-Fi y envío de archivos.
 - *Datos e integraciones:* fila de una tabla CSV, petición HTTP y notificación.
 - Plantillas en el texto: `{variable}`, `{rand:1-100}`, `{pick:hola|buenas}`, `{device.name}`, `{timestamp}`.
-- En el lienzo se resalta en tiempo real el nodo que está ejecutando cada teléfono.
+- En el lienzo se resalta en tiempo real el nodo que está ejecutando cada teléfono, y el registro muestra cada paso con sus parámetros.
+- Doble clic en un nodo de la paleta lo añade a continuación del seleccionado (o del último añadido) y lo conecta solo.
+- Si un paso falla, el registro dice en qué nodo y por qué (app no instalada, uiautomator sin respuesta…).
 - Ejecución en paralelo con límite de concurrencia y **arranque escalonado** entre dispositivos.
 - Plantillas listas para usar, importar y exportar flujos (`.granja.json`), y Ctrl+S para guardar.
 

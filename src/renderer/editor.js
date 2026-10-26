@@ -47,8 +47,62 @@ const nodeClass = (type) => `n-${type}`;
 function addNode(type, x, y) {
   const def = NODE_MAP[type];
   const data = defaultParams(type);
-  editor.addNode(type, def.inputs ?? 1, def.outputs.length, x, y, nodeClass(type), data, nodeHtml(type, data));
+  const id = editor.addNode(type, def.inputs ?? 1, def.outputs.length, x, y, nodeClass(type), data, nodeHtml(type, data));
   decorateNodes();
+  return id;
+}
+
+/** Convierte un punto del área visible del lienzo (px desde su esquina) a coordenadas de Drawflow. */
+function viewToCanvas(vx, vy) {
+  const pc = editor.precanvas;
+  const z = editor.zoom;
+  const cx = pc.clientWidth / 2;
+  const cy = pc.clientHeight / 2;
+  return [(vx - editor.canvas_x - cx) / z + cx, (vy - editor.canvas_y - cy) / z + cy];
+}
+
+let lastAddedId = null;
+
+/**
+ * Añade un nodo desde la paleta (doble clic). Va a continuación del nodo seleccionado o del último
+ * añadido, a su derecha y ya conectado, para poder montar un flujo seguido sin solapar nodos.
+ */
+function addNodeChained(type) {
+  const data = editor.drawflow.drawflow.Home.data;
+  const selId = editor.node_selected?.id?.replace('node-', '');
+  const anchorId = [selId, lastAddedId].find((id) => id && data[id]);
+  const anchor = anchorId && data[anchorId];
+  let x;
+  let y;
+  if (anchor) {
+    const el = document.getElementById(`node-${anchorId}`);
+    x = anchor.pos_x + (el?.offsetWidth || 236) + 80;
+    y = anchor.pos_y;
+  } else {
+    const box = $('#drawflow');
+    [x, y] = viewToCanvas(box.clientWidth * 0.3, box.clientHeight * 0.3);
+  }
+  // Si el hueco está ocupado, se baja hasta encontrar sitio libre.
+  const taken = (px, py) => Object.values(data).some((n) => Math.abs(n.pos_x - px) < 200 && Math.abs(n.pos_y - py) < 120);
+  while (taken(x, y)) y += 140;
+  const id = addNode(type, x, y);
+  const anchorOuts = anchor ? Object.keys(anchor.outputs || {}) : [];
+  if (anchor && anchorOuts.length && (NODE_MAP[type].inputs ?? 1) > 0) {
+    // Se usa la primera salida libre del nodo anterior (p. ej. "sí" y luego "no").
+    const free = anchorOuts.find((o) => !anchor.outputs[o].connections.length) || anchorOuts[0];
+    editor.addConnection(anchorId, id, free, 'input_1');
+  }
+  lastAddedId = String(id);
+  dirty = true;
+  // Mantener el nodo nuevo a la vista.
+  const el = document.getElementById(`node-${id}`);
+  const box = $('#drawflow').getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  if (r.right > box.right - 20 || r.bottom > box.bottom - 20 || r.left < box.left || r.top < box.top) {
+    editor.canvas_x -= Math.max(0, r.right - box.right + 80) - Math.max(0, box.left - r.left + 80);
+    editor.canvas_y -= Math.max(0, r.bottom - box.bottom + 80) - Math.max(0, box.top - r.top + 80);
+    editor.precanvas.style.transform = `translate(${editor.canvas_x}px, ${editor.canvas_y}px) scale(${editor.zoom})`;
+  }
 }
 
 function emptyGraph() {
@@ -66,6 +120,9 @@ function loadGraph(graph) {
   decorateNodes();
   fitView();
   dirty = false;
+  // En un flujo nuevo, lo primero que se añada se conecta al nodo Inicio.
+  const ids = Object.keys(editor.drawflow.drawflow.Home.data);
+  lastAddedId = ids.length === 1 ? ids[0] : null;
 }
 
 function openWorkflow(wf) {
@@ -141,14 +198,11 @@ function buildPalette() {
     const items = NODE_TYPES.filter((n) => n.category === c.id && (!q || n.label.toLowerCase().includes(q)));
     if (!items.length) return '';
     return `<h4>${esc(c.label)}</h4>${items.map((n) =>
-      `<div class="item" draggable="true" data-type="${n.type}" style="--c:${c.color}" title="${esc(n.help || 'Arrastra al lienzo o haz doble clic')}"><span class="nic">${icon(n.icon, 14)}</span>${esc(n.label)}</div>`).join('')}`;
+      `<div class="item" draggable="true" data-type="${n.type}" style="--c:${c.color}" title="${esc(n.help || 'Arrastra al lienzo, o haz doble clic para añadirlo a continuación del nodo seleccionado')}"><span class="nic">${icon(n.icon, 14)}</span>${esc(n.label)}</div>`).join('')}`;
   }).join('') || '<p class="muted">Ningún nodo coincide</p>';
   pal.querySelectorAll('.item').forEach((it) => {
     it.addEventListener('dragstart', (e) => e.dataTransfer.setData('node', it.dataset.type));
-    it.addEventListener('dblclick', () => {
-      const r = editor.precanvas.getBoundingClientRect();
-      addNode(it.dataset.type, (-r.x + 400) / editor.zoom, (-r.y + 250) / editor.zoom);
-    });
+    it.addEventListener('dblclick', () => addNodeChained(it.dataset.type));
   });
 }
 

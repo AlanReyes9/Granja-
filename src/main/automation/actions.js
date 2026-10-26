@@ -47,36 +47,31 @@ export async function tap(device, x, y, jitter = 0) {
   await device.shell(`input tap ${x + j()} ${y + j()}`);
 }
 
+/**
+ * Deslizamiento. En modo humano varía ligeramente los extremos y la duración.
+ * Se usa un único "input swipe": encadenar varios "input motionevent" tarda ~0,4 s por llamada en un
+ * teléfono real, el gesto se vuelve lentísimo y Android lo interpreta como pulsación larga en vez de scroll.
+ */
 export async function swipe(device, x1, y1, x2, y2, ms, humanize) {
   if (humanize) {
     const size = await device.getScreenSize();
     const v = Math.round(Math.min(size.width, size.height) * 0.02);
-    x1 += randInt(-v, v); y1 += randInt(-v, v); x2 += randInt(-v, v); y2 += randInt(-v, v);
+    const clampX = (n) => Math.min(size.width - 1, Math.max(0, n));
+    const clampY = (n) => Math.min(size.height - 1, Math.max(0, n));
+    x1 = clampX(x1 + randInt(-v, v)); y1 = clampY(y1 + randInt(-v, v));
+    x2 = clampX(x2 + randInt(-v, v)); y2 = clampY(y2 + randInt(-v, v));
     ms = Math.round(ms * (0.8 + Math.random() * 0.5));
-    // Trayectoria curva: dos tramos con un punto intermedio desplazado.
-    const mx = Math.round((x1 + x2) / 2 + randInt(-v * 2, v * 2));
-    const my = Math.round((y1 + y2) / 2 + randInt(-v, v));
-    const steps = 8;
-    const parts = [`input motionevent DOWN ${x1} ${y1}`];
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      const px = Math.round((1 - t) ** 2 * x1 + 2 * (1 - t) * t * mx + t ** 2 * x2);
-      const py = Math.round((1 - t) ** 2 * y1 + 2 * (1 - t) * t * my + t ** 2 * y2);
-      parts.push(`sleep ${(ms / steps / 1000).toFixed(3)}`, `input motionevent MOVE ${px} ${py}`);
-    }
-    parts.push(`input motionevent UP ${x2} ${y2}`);
-    const out = await device.shell(parts.join('; ')).catch((e) => `Error ${e.message}`);
-    if (!/Error|Unknown|usage/i.test(out)) return;
-    // Android antiguo sin "motionevent": recurrimos a swipe lineal.
   }
-  await device.shell(`input swipe ${x1} ${y1} ${x2} ${y2} ${ms}`);
+  await device.shell(`input swipe ${x1} ${y1} ${x2} ${y2} ${Math.max(50, ms)}`);
 }
 
-/** Escapa texto para "input text". */
+/**
+ * Prepara texto para "input text". El texto va entre comillas simples (shellQuote), así que no hay
+ * que escapar nada más: una barra invertida se escribiría literalmente en el teléfono.
+ * Android convierte "%s" en espacio, por eso los espacios se envían así.
+ */
 export function escapeInputText(text) {
-  return String(text)
-    .replace(/([\\"'`$&|;<>()*?~!#{}[\]^])/g, '\\$1')
-    .replace(/ /g, '%s');
+  return String(text).replace(/ /g, '%s');
 }
 
 export async function typeText(device, text, humanize, signal) {
@@ -121,9 +116,20 @@ export function parseUiDump(xml) {
   return nodes;
 }
 
-export async function dumpUi(device) {
-  const out = await device.shell('uiautomator dump /sdcard/granja_ui.xml >/dev/null 2>&1; cat /sdcard/granja_ui.xml', { timeout: 20000 });
-  return parseUiDump(out);
+/**
+ * Lee los elementos de la pantalla. uiautomator falla a menudo mientras hay animaciones
+ * ("could not get idle state"), así que se reintenta antes de dar error: devolver una lista vacía
+ * haría que "Tocar texto" siguiera por "no encontrado" sin avisar del problema real.
+ */
+export async function dumpUi(device, signal) {
+  let last = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const out = await device.shell('rm -f /sdcard/granja_ui.xml; uiautomator dump /sdcard/granja_ui.xml 2>&1; cat /sdcard/granja_ui.xml 2>/dev/null', { timeout: 25000 });
+    if (out.includes('<hierarchy')) return parseUiDump(out.slice(out.indexOf('<?xml') >= 0 ? out.indexOf('<?xml') : out.indexOf('<hierarchy')));
+    last = out.trim().split('\n')[0];
+    await sleep(600, signal);
+  }
+  throw new Error(`No se pudieron leer los elementos de la pantalla (uiautomator): ${last || 'sin respuesta'}`);
 }
 
 export function findNode(nodes, { text, exact, id }) {
@@ -137,12 +143,23 @@ export function findNode(nodes, { text, exact, id }) {
 export async function waitForNode(device, query, timeout, signal) {
   const end = Date.now() + Math.max(0, timeout);
   do {
-    const node = findNode(await dumpUi(device), query);
+    const node = findNode(await dumpUi(device, signal), query);
     if (node) return node;
     if (Date.now() >= end) break;
     await sleep(700, signal);
   } while (Date.now() < end);
   return null;
+}
+
+/** Estado de la pantalla: si está apagada y si hay pantalla de bloqueo. */
+export async function screenState(device) {
+  const out = await device.shell(
+    "dumpsys power | grep -E 'mWakefulness=|Display Power: state='; dumpsys window | grep -i -E 'mDreamingLockscreen=true|mShowingLockscreen=true|isStatusBarKeyguard=true|mKeyguardShowing=true|keyguardShowing=true'",
+  );
+  return {
+    asleep: /mWakefulness=(Asleep|Dozing)|Display Power: state=OFF/i.test(out),
+    locked: /(Lockscreen|Keyguard|keyguardShowing)\w*=true/i.test(out),
+  };
 }
 
 export async function foregroundPackage(device) {
