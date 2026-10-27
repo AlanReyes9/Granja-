@@ -9,6 +9,7 @@
 //   (//android.widget.EditText)[2]   //*[@text="x"]/..   //*[last()]   //*[not(@text="")]
 //   //*[@text=$perfil]   (variables del flujo: el valor se compara tal cual, aunque lleve comillas)
 //   //*[@text="Ana"]/following::android.widget.Button[1]   …/following-sibling::*[1]
+//   /hierarchy/…/android.widget.Button[2] | //*[@content-desc="Vídeos"]   (unión: si falla una, vale la otra)
 
 /**
  * Elementos que cumplen el XPath, en orden de documento. `nodes` es la salida de parseUiDump;
@@ -48,8 +49,17 @@ class Parser {
   eat(s) { if (this.peek(s)) { this.i += s.length; return true; } return false; }
   expect(s) { if (!this.eat(s)) this.fail(`se esperaba "${s}"`); }
 
-  /** Ruta completa, o "(ruta)[n]" para quedarse con el n-ésimo resultado global. */
+  /** Una o varias rutas separadas por "|" (unión: vale cualquiera de ellas). */
   parseTop() {
+    const branches = [this.parseBranch()];
+    while (this.eat('|')) branches.push(this.parseBranch());
+    this.ws();
+    if (this.i < this.src.length) this.fail('sobra texto');
+    return branches.length === 1 ? branches[0] : { type: 'union', branches };
+  }
+
+  /** Ruta completa, o "(ruta)[n]" para quedarse con el n-ésimo resultado global. */
+  parseBranch() {
     let expr;
     if (this.eat('(')) {
       expr = { type: 'group', path: this.parsePath(), preds: [] };
@@ -59,8 +69,6 @@ class Parser {
     } else {
       expr = this.parsePath();
     }
-    this.ws();
-    if (this.i < this.src.length) this.fail('sobra texto');
     return expr;
   }
 
@@ -238,6 +246,10 @@ function evalTop(expr, ctx) {
   if (expr.type === 'path') return evalSteps(expr.steps, [ctx.root], ctx);
   if (expr.type === 'group') return applyPreds(evalSteps(expr.path.steps, [ctx.root], ctx), expr.preds, ctx);
   if (expr.type === 'continue') return evalSteps(expr.path.steps, evalTop(expr.base, ctx), ctx);
+  if (expr.type === 'union') {
+    const all = new Set(expr.branches.flatMap((b) => evalTop(b, ctx)));
+    return [...all].sort((a, b) => a.index - b.index);
+  }
   return [];
 }
 

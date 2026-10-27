@@ -84,3 +84,11 @@ test('XPath: variables del flujo y ejes following / following-sibling', () => {
   assert.throws(() => queryXpath(nodes, '//*[@text=$nada]', vars), /\$nada/);
   assert.throws(() => queryXpath(nodes, '//following::*'), /XPath/);
 });
+
+test('XPath: unión con | (absoluto o, si falla, el corto)', () => {
+  const entrar = byText('Entrar');
+  assert.deepEqual(queryXpath(nodes, `/hierarchy/no/existe | ${entrar.xpath}`), [entrar]);
+  assert.deepEqual(queryXpath(nodes, `${entrar.xpathAbs} | ${entrar.xpath}`), [entrar], 'sin duplicados');
+  assert.deepEqual(queryXpath(nodes, '//*[@text="Entrar"] | //*[@text="Usuario"]').map((n) => n.text), ['Usuario', 'Entrar'], 'en orden de documento');
+  assert.throws(() => queryXpath(nodes, '//*[@text="a"] |'), /XPath/);
+});

@@ -2,7 +2,7 @@
   "format": "nexus-farmer-workflow",
   "version": 1,
   "name": "YouTube: ver vídeos de un canal",
-  "description": "Busca el canal de la variable \"canal\" (su @usuario), abre su pestaña Vídeos y los reproduce uno tras otro, cada uno completo o hasta \"max_seg\" segundos. Los XPath están en variables al principio: si en tu teléfono no encuentra algo, copia del Inspector el XPath (absoluto o corto) y pégalo en la variable xp_… correspondiente.",
+  "description": "Busca el canal de la variable \"canal\" (su @usuario), abre su pestaña Vídeos y los reproduce uno tras otro, cada uno completo o hasta \"max_seg\" segundos. Los XPath están en variables al principio (absoluto | corto, de YouTube en español): si en tu teléfono no encuentra algo, copia del Inspector el XPath y pégalo en la variable xp_… correspondiente.",
   "graph": {
     "drawflow": {
       "Home": {
@@ -135,7 +135,7 @@
             "typenode": false,
             "data": {
               "name": "xp_buscar",
-              "value": "//*[@content-desc=\"Buscar\" or @content-desc=\"Buscar en YouTube\" or @resource-id=\"com.google.android.youtube:id/menu_item_1\"]"
+              "value": "/hierarchy/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/androidx.drawerlayout.widget.DrawerLayout/android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout[2]/android.view.ViewGroup/android.view.ViewGroup/android.widget.FrameLayout[2]/android.widget.ScrollView/android.widget.LinearLayout/android.widget.FrameLayout/android.view.ViewGroup/android.support.v7.widget.LinearLayoutCompat/android.widget.FrameLayout[2]/android.view.ViewGroup/android.widget.ImageView | //*[@content-desc=\"Buscar\" or @content-desc=\"Buscar en YouTube\"]"
             },
             "inputs": {
               "input_1": {
@@ -168,7 +168,7 @@
             "typenode": false,
             "data": {
               "name": "xp_canal",
-              "value": "(//*[contains(@content-desc,\"suscriptores\") and contains(@content-desc,$canal)])[1]"
+              "value": "/hierarchy/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/androidx.drawerlayout.widget.DrawerLayout/android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout[2]/android.view.ViewGroup/android.view.ViewGroup/android.widget.FrameLayout[2]/android.widget.ScrollView/android.widget.FrameLayout/android.widget.FrameLayout/android.support.v7.widget.RecyclerView/android.view.ViewGroup[1]/android.view.ViewGroup[2] | //*[@content-desc=\"Ver canal\"]"
             },
             "inputs": {
               "input_1": {
@@ -201,7 +201,7 @@
             "typenode": false,
             "data": {
               "name": "xp_pestana_videos",
-              "value": "//*[@text=\"Vídeos\" or @content-desc=\"Vídeos\" or @text=\"Videos\" or @content-desc=\"Videos\"]"
+              "value": "/hierarchy/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/androidx.drawerlayout.widget.DrawerLayout/android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout[2]/android.view.ViewGroup/android.view.ViewGroup/android.widget.FrameLayout[2]/android.widget.ScrollView/android.widget.LinearLayout/android.view.ViewGroup/android.widget.FrameLayout/android.widget.HorizontalScrollView/android.widget.LinearLayout/android.widget.Button[2] | //*[@content-desc=\"Vídeos\" or @text=\"Vídeos\" or @content-desc=\"Videos\" or @text=\"Videos\"]"
             },
             "inputs": {
               "input_1": {
@@ -234,7 +234,7 @@
             "typenode": false,
             "data": {
               "name": "xp_video",
-              "value": "(//*[contains(@content-desc,\"visualizaciones\") or contains(@content-desc,\"reproducciones\") or contains(@content-desc,\" vistas\") or contains(@content-desc,\"minutos\") or contains(@content-desc,\"segundos\") or contains(@content-desc,\"views\")])[1]"
+              "value": "/hierarchy/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/androidx.drawerlayout.widget.DrawerLayout/android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout[2]/android.view.ViewGroup/android.view.ViewGroup/android.widget.FrameLayout[2]/android.widget.ScrollView/android.widget.FrameLayout[2]/android.widget.FrameLayout/androidx.viewpager.widget.ViewPager/android.view.ViewGroup/android.support.v7.widget.RecyclerView/android.view.ViewGroup[2] | (//*[contains(@content-desc,\"visualizaciones\") or contains(@content-desc,\"reproducciones\") or contains(@content-desc,\" vistas\") or contains(@content-desc,\"minutos\") or contains(@content-desc,\"segundos\") or contains(@content-desc,\"views\")])[1]"
             },
             "inputs": {
               "input_1": {
@@ -294,8 +294,8 @@
           },
           "10": {
             "id": 10,
-            "name": "open_app",
-            "class": "n-open_app",
+            "name": "stop_app",
+            "class": "n-stop_app",
             "html": "",
             "typenode": false,
             "data": {
@@ -331,8 +331,8 @@
             "html": "",
             "typenode": false,
             "data": {
-              "min": 4000,
-              "max": 6000
+              "min": 1000,
+              "max": 2000
             },
             "inputs": {
               "input_1": {
@@ -359,13 +359,12 @@
           },
           "12": {
             "id": 12,
-            "name": "tap_xpath",
-            "class": "n-tap_xpath",
+            "name": "open_app",
+            "class": "n-open_app",
             "html": "",
             "typenode": false,
             "data": {
-              "xpath": "{xp_buscar}",
-              "timeout": 8000
+              "package": "com.google.android.youtube"
             },
             "inputs": {
               "input_1": {
@@ -385,14 +384,6 @@
                     "output": "input_1"
                   }
                 ]
-              },
-              "output_2": {
-                "connections": [
-                  {
-                    "node": "20",
-                    "output": "input_1"
-                  }
-                ]
               }
             },
             "pos_x": 1118,
@@ -405,8 +396,8 @@
             "html": "",
             "typenode": false,
             "data": {
-              "min": 800,
-              "max": 1500
+              "min": 4000,
+              "max": 6000
             },
             "inputs": {
               "input_1": {
@@ -433,13 +424,13 @@
           },
           "14": {
             "id": 14,
-            "name": "type_text",
-            "class": "n-type_text",
+            "name": "tap_xpath",
+            "class": "n-tap_xpath",
             "html": "",
             "typenode": false,
             "data": {
-              "text": "{canal}",
-              "humanize": true
+              "xpath": "{xp_buscar}",
+              "timeout": 8000
             },
             "inputs": {
               "input_1": {
@@ -459,6 +450,14 @@
                     "output": "input_1"
                   }
                 ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "22",
+                    "output": "input_1"
+                  }
+                ]
               }
             },
             "pos_x": 1677,
@@ -466,12 +465,13 @@
           },
           "15": {
             "id": 15,
-            "name": "key",
-            "class": "n-key",
+            "name": "random_wait",
+            "class": "n-random_wait",
             "html": "",
             "typenode": false,
             "data": {
-              "key": "ENTER"
+              "min": 800,
+              "max": 1500
             },
             "inputs": {
               "input_1": {
@@ -498,13 +498,13 @@
           },
           "16": {
             "id": 16,
-            "name": "random_wait",
-            "class": "n-random_wait",
+            "name": "type_text",
+            "class": "n-type_text",
             "html": "",
             "typenode": false,
             "data": {
-              "min": 3000,
-              "max": 5000
+              "text": "{canal}",
+              "humanize": true
             },
             "inputs": {
               "input_1": {
@@ -531,13 +531,12 @@
           },
           "17": {
             "id": 17,
-            "name": "tap_xpath",
-            "class": "n-tap_xpath",
+            "name": "key",
+            "class": "n-key",
             "html": "",
             "typenode": false,
             "data": {
-              "xpath": "{xp_canal}",
-              "timeout": 8000
+              "key": "ENTER"
             },
             "inputs": {
               "input_1": {
@@ -557,14 +556,6 @@
                     "output": "input_1"
                   }
                 ]
-              },
-              "output_2": {
-                "connections": [
-                  {
-                    "node": "20",
-                    "output": "input_1"
-                  }
-                ]
               }
             },
             "pos_x": 559,
@@ -577,8 +568,8 @@
             "html": "",
             "typenode": false,
             "data": {
-              "min": 2500,
-              "max": 4000
+              "min": 3000,
+              "max": 5000
             },
             "inputs": {
               "input_1": {
@@ -610,8 +601,8 @@
             "html": "",
             "typenode": false,
             "data": {
-              "xpath": "{xp_pestana_videos}",
-              "timeout": 6000
+              "xpath": "{xp_canal}",
+              "timeout": 8000
             },
             "inputs": {
               "input_1": {
@@ -627,7 +618,7 @@
               "output_1": {
                 "connections": [
                   {
-                    "node": "21",
+                    "node": "20",
                     "output": "input_1"
                   }
                 ]
@@ -635,7 +626,7 @@
               "output_2": {
                 "connections": [
                   {
-                    "node": "20",
+                    "node": "22",
                     "output": "input_1"
                   }
                 ]
@@ -646,28 +637,20 @@
           },
           "20": {
             "id": 20,
-            "name": "shell",
-            "class": "n-shell",
+            "name": "random_wait",
+            "class": "n-random_wait",
             "html": "",
             "typenode": false,
             "data": {
-              "command": "am start -a android.intent.action.VIEW -d 'https://www.youtube.com/{canal}/videos' -p com.google.android.youtube",
-              "var": ""
+              "min": 2500,
+              "max": 4000
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
-                    "node": "12",
-                    "input": "output_2"
-                  },
-                  {
-                    "node": "17",
-                    "input": "output_2"
-                  },
-                  {
                     "node": "19",
-                    "input": "output_2"
+                    "input": "output_1"
                   }
                 ]
               }
@@ -687,21 +670,17 @@
           },
           "21": {
             "id": 21,
-            "name": "random_wait",
-            "class": "n-random_wait",
+            "name": "tap_xpath",
+            "class": "n-tap_xpath",
             "html": "",
             "typenode": false,
             "data": {
-              "min": 3000,
-              "max": 5000
+              "xpath": "{xp_pestana_videos}",
+              "timeout": 6000
             },
             "inputs": {
               "input_1": {
                 "connections": [
-                  {
-                    "node": "19",
-                    "input": "output_1"
-                  },
                   {
                     "node": "20",
                     "input": "output_1"
@@ -711,6 +690,14 @@
             },
             "outputs": {
               "output_1": {
+                "connections": [
+                  {
+                    "node": "23",
+                    "output": "input_1"
+                  }
+                ]
+              },
+              "output_2": {
                 "connections": [
                   {
                     "node": "22",
@@ -724,20 +711,28 @@
           },
           "22": {
             "id": 22,
-            "name": "set_var",
-            "class": "n-set_var",
+            "name": "shell",
+            "class": "n-shell",
             "html": "",
             "typenode": false,
             "data": {
-              "name": "ultimo",
-              "value": ""
+              "command": "am start -a android.intent.action.VIEW -d 'https://www.youtube.com/{canal}/videos' -p com.google.android.youtube",
+              "var": ""
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
+                    "node": "14",
+                    "input": "output_2"
+                  },
+                  {
+                    "node": "19",
+                    "input": "output_2"
+                  },
+                  {
                     "node": "21",
-                    "input": "output_1"
+                    "input": "output_2"
                   }
                 ]
               }
@@ -757,22 +752,23 @@
           },
           "23": {
             "id": 23,
-            "name": "loop",
-            "class": "n-loop",
+            "name": "random_wait",
+            "class": "n-random_wait",
             "html": "",
             "typenode": false,
             "data": {
-              "times": "{videos}"
+              "min": 3000,
+              "max": 5000
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
-                    "node": "22",
+                    "node": "21",
                     "input": "output_1"
                   },
                   {
-                    "node": "46",
+                    "node": "22",
                     "input": "output_1"
                   }
                 ]
@@ -786,14 +782,6 @@
                     "output": "input_1"
                   }
                 ]
-              },
-              "output_2": {
-                "connections": [
-                  {
-                    "node": "48",
-                    "output": "input_1"
-                  }
-                ]
               }
             },
             "pos_x": 280,
@@ -801,13 +789,12 @@
           },
           "24": {
             "id": 24,
-            "name": "if_var",
-            "class": "n-if_var",
+            "name": "set_var",
+            "class": "n-set_var",
             "html": "",
             "typenode": false,
             "data": {
               "name": "ultimo",
-              "op": "==",
               "value": ""
             },
             "inputs": {
@@ -824,14 +811,6 @@
               "output_1": {
                 "connections": [
                   {
-                    "node": "29",
-                    "output": "input_1"
-                  }
-                ]
-              },
-              "output_2": {
-                "connections": [
-                  {
                     "node": "25",
                     "output": "input_1"
                   }
@@ -843,24 +822,23 @@
           },
           "25": {
             "id": 25,
-            "name": "swipe",
-            "class": "n-swipe",
+            "name": "loop",
+            "class": "n-loop",
             "html": "",
             "typenode": false,
             "data": {
-              "x1": "50%",
-              "y1": "72%",
-              "x2": "50%",
-              "y2": "45%",
-              "ms": 700,
-              "humanize": false
+              "times": "{videos}"
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
                     "node": "24",
-                    "input": "output_2"
+                    "input": "output_1"
+                  },
+                  {
+                    "node": "48",
+                    "input": "output_1"
                   }
                 ]
               }
@@ -870,6 +848,14 @@
                 "connections": [
                   {
                     "node": "26",
+                    "output": "input_1"
+                  }
+                ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "50",
                     "output": "input_1"
                   }
                 ]
@@ -880,54 +866,20 @@
           },
           "26": {
             "id": 26,
-            "name": "random_wait",
-            "class": "n-random_wait",
+            "name": "if_var",
+            "class": "n-if_var",
             "html": "",
             "typenode": false,
             "data": {
-              "min": 1200,
-              "max": 2200
+              "name": "ultimo",
+              "op": "==",
+              "value": ""
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
                     "node": "25",
-                    "input": "output_1"
-                  }
-                ]
-              }
-            },
-            "outputs": {
-              "output_1": {
-                "connections": [
-                  {
-                    "node": "27",
-                    "output": "input_1"
-                  }
-                ]
-              }
-            },
-            "pos_x": 1118,
-            "pos_y": 1092
-          },
-          "27": {
-            "id": 27,
-            "name": "read_text",
-            "class": "n-read_text",
-            "html": "",
-            "typenode": false,
-            "data": {
-              "id": "com.app:id/titulo",
-              "xpath": "(//*[@content-desc=$ultimo or @text=$ultimo]/following::*[contains(@content-desc,\"visualizaciones\") or contains(@content-desc,\"reproducciones\") or contains(@content-desc,\" vistas\") or contains(@content-desc,\"minutos\") or contains(@content-desc,\"segundos\") or contains(@content-desc,\"views\")])[1]",
-              "var": "actual",
-              "timeout": 2000
-            },
-            "inputs": {
-              "input_1": {
-                "connections": [
-                  {
-                    "node": "26",
                     "input": "output_1"
                   }
                 ]
@@ -945,6 +897,43 @@
               "output_2": {
                 "connections": [
                   {
+                    "node": "27",
+                    "output": "input_1"
+                  }
+                ]
+              }
+            },
+            "pos_x": 1118,
+            "pos_y": 1092
+          },
+          "27": {
+            "id": 27,
+            "name": "swipe",
+            "class": "n-swipe",
+            "html": "",
+            "typenode": false,
+            "data": {
+              "x1": "50%",
+              "y1": "72%",
+              "x2": "50%",
+              "y2": "45%",
+              "ms": 700,
+              "humanize": false
+            },
+            "inputs": {
+              "input_1": {
+                "connections": [
+                  {
+                    "node": "26",
+                    "input": "output_2"
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "output_1": {
+                "connections": [
+                  {
                     "node": "28",
                     "output": "input_1"
                   }
@@ -956,34 +945,26 @@
           },
           "28": {
             "id": 28,
-            "name": "if_xpath",
-            "class": "n-if_xpath",
+            "name": "random_wait",
+            "class": "n-random_wait",
             "html": "",
             "typenode": false,
             "data": {
-              "xpath": "//*[@content-desc=$ultimo or @text=$ultimo]",
-              "timeout": 1000
+              "min": 1200,
+              "max": 2200
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
                     "node": "27",
-                    "input": "output_2"
+                    "input": "output_1"
                   }
                 ]
               }
             },
             "outputs": {
               "output_1": {
-                "connections": [
-                  {
-                    "node": "47",
-                    "output": "input_1"
-                  }
-                ]
-              },
-              "output_2": {
                 "connections": [
                   {
                     "node": "29",
@@ -1002,151 +983,16 @@
             "html": "",
             "typenode": false,
             "data": {
-              "id": "com.app:id/titulo",
-              "xpath": "{xp_video}",
+              "id": "",
+              "xpath": "(//*[@content-desc=$ultimo or @text=$ultimo]/following::*[contains(@content-desc,\"visualizaciones\") or contains(@content-desc,\"reproducciones\") or contains(@content-desc,\" vistas\") or contains(@content-desc,\"minutos\") or contains(@content-desc,\"segundos\") or contains(@content-desc,\"views\")])[1]",
               "var": "actual",
-              "timeout": 6000
+              "timeout": 2000
             },
             "inputs": {
               "input_1": {
                 "connections": [
-                  {
-                    "node": "24",
-                    "input": "output_1"
-                  },
                   {
                     "node": "28",
-                    "input": "output_2"
-                  },
-                  {
-                    "node": "31",
-                    "input": "output_2"
-                  }
-                ]
-              }
-            },
-            "outputs": {
-              "output_1": {
-                "connections": [
-                  {
-                    "node": "30",
-                    "output": "input_1"
-                  }
-                ]
-              },
-              "output_2": {
-                "connections": [
-                  {
-                    "node": "47",
-                    "output": "input_1"
-                  }
-                ]
-              }
-            },
-            "pos_x": 0,
-            "pos_y": 1456
-          },
-          "30": {
-            "id": 30,
-            "name": "tap_xpath",
-            "class": "n-tap_xpath",
-            "html": "",
-            "typenode": false,
-            "data": {
-              "xpath": "{xp_video}",
-              "timeout": 3000
-            },
-            "inputs": {
-              "input_1": {
-                "connections": [
-                  {
-                    "node": "29",
-                    "input": "output_1"
-                  }
-                ]
-              }
-            },
-            "outputs": {
-              "output_1": {
-                "connections": [
-                  {
-                    "node": "32",
-                    "output": "input_1"
-                  }
-                ]
-              },
-              "output_2": {
-                "connections": [
-                  {
-                    "node": "47",
-                    "output": "input_1"
-                  }
-                ]
-              }
-            },
-            "pos_x": 280,
-            "pos_y": 1456
-          },
-          "31": {
-            "id": 31,
-            "name": "tap_xpath",
-            "class": "n-tap_xpath",
-            "html": "",
-            "typenode": false,
-            "data": {
-              "xpath": "(//*[@content-desc=$ultimo or @text=$ultimo]/following::*[contains(@content-desc,\"visualizaciones\") or contains(@content-desc,\"reproducciones\") or contains(@content-desc,\" vistas\") or contains(@content-desc,\"minutos\") or contains(@content-desc,\"segundos\") or contains(@content-desc,\"views\")])[1]",
-              "timeout": 3000
-            },
-            "inputs": {
-              "input_1": {
-                "connections": [
-                  {
-                    "node": "27",
-                    "input": "output_1"
-                  }
-                ]
-              }
-            },
-            "outputs": {
-              "output_1": {
-                "connections": [
-                  {
-                    "node": "32",
-                    "output": "input_1"
-                  }
-                ]
-              },
-              "output_2": {
-                "connections": [
-                  {
-                    "node": "29",
-                    "output": "input_1"
-                  }
-                ]
-              }
-            },
-            "pos_x": 559,
-            "pos_y": 1456
-          },
-          "32": {
-            "id": 32,
-            "name": "set_var",
-            "class": "n-set_var",
-            "html": "",
-            "typenode": false,
-            "data": {
-              "name": "ultimo",
-              "value": "{actual}"
-            },
-            "inputs": {
-              "input_1": {
-                "connections": [
-                  {
-                    "node": "30",
-                    "input": "output_1"
-                  },
-                  {
-                    "node": "31",
                     "input": "output_1"
                   }
                 ]
@@ -1160,25 +1006,126 @@
                     "output": "input_1"
                   }
                 ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "30",
+                    "output": "input_1"
+                  }
+                ]
               }
             },
-            "pos_x": 839,
+            "pos_x": 0,
             "pos_y": 1456
           },
-          "33": {
-            "id": 33,
-            "name": "log",
-            "class": "n-log",
+          "30": {
+            "id": 30,
+            "name": "if_xpath",
+            "class": "n-if_xpath",
             "html": "",
             "typenode": false,
             "data": {
-              "message": "{device.name}: reproduciendo {actual}"
+              "xpath": "//*[@content-desc=$ultimo or @text=$ultimo]",
+              "timeout": 1000
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
+                    "node": "29",
+                    "input": "output_2"
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "output_1": {
+                "connections": [
+                  {
+                    "node": "49",
+                    "output": "input_1"
+                  }
+                ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "31",
+                    "output": "input_1"
+                  }
+                ]
+              }
+            },
+            "pos_x": 280,
+            "pos_y": 1456
+          },
+          "31": {
+            "id": 31,
+            "name": "read_text",
+            "class": "n-read_text",
+            "html": "",
+            "typenode": false,
+            "data": {
+              "id": "",
+              "xpath": "{xp_video}",
+              "var": "actual",
+              "timeout": 6000
+            },
+            "inputs": {
+              "input_1": {
+                "connections": [
+                  {
+                    "node": "26",
+                    "input": "output_1"
+                  },
+                  {
+                    "node": "30",
+                    "input": "output_2"
+                  },
+                  {
+                    "node": "33",
+                    "input": "output_2"
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "output_1": {
+                "connections": [
+                  {
                     "node": "32",
+                    "output": "input_1"
+                  }
+                ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "49",
+                    "output": "input_1"
+                  }
+                ]
+              }
+            },
+            "pos_x": 559,
+            "pos_y": 1456
+          },
+          "32": {
+            "id": 32,
+            "name": "tap_xpath",
+            "class": "n-tap_xpath",
+            "html": "",
+            "typenode": false,
+            "data": {
+              "xpath": "{xp_video}",
+              "timeout": 3000
+            },
+            "inputs": {
+              "input_1": {
+                "connections": [
+                  {
+                    "node": "31",
                     "input": "output_1"
                   }
                 ]
@@ -1192,6 +1139,55 @@
                     "output": "input_1"
                   }
                 ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "49",
+                    "output": "input_1"
+                  }
+                ]
+              }
+            },
+            "pos_x": 839,
+            "pos_y": 1456
+          },
+          "33": {
+            "id": 33,
+            "name": "tap_xpath",
+            "class": "n-tap_xpath",
+            "html": "",
+            "typenode": false,
+            "data": {
+              "xpath": "(//*[@content-desc=$ultimo or @text=$ultimo]/following::*[contains(@content-desc,\"visualizaciones\") or contains(@content-desc,\"reproducciones\") or contains(@content-desc,\" vistas\") or contains(@content-desc,\"minutos\") or contains(@content-desc,\"segundos\") or contains(@content-desc,\"views\")])[1]",
+              "timeout": 3000
+            },
+            "inputs": {
+              "input_1": {
+                "connections": [
+                  {
+                    "node": "29",
+                    "input": "output_1"
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "output_1": {
+                "connections": [
+                  {
+                    "node": "34",
+                    "output": "input_1"
+                  }
+                ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "31",
+                    "output": "input_1"
+                  }
+                ]
               }
             },
             "pos_x": 1118,
@@ -1199,17 +1195,21 @@
           },
           "34": {
             "id": 34,
-            "name": "random_wait",
-            "class": "n-random_wait",
+            "name": "set_var",
+            "class": "n-set_var",
             "html": "",
             "typenode": false,
             "data": {
-              "min": 8000,
-              "max": 11000
+              "name": "ultimo",
+              "value": "{actual}"
             },
             "inputs": {
               "input_1": {
                 "connections": [
+                  {
+                    "node": "32",
+                    "input": "output_1"
+                  },
                   {
                     "node": "33",
                     "input": "output_1"
@@ -1232,13 +1232,12 @@
           },
           "35": {
             "id": 35,
-            "name": "shell",
-            "class": "n-shell",
+            "name": "log",
+            "class": "n-log",
             "html": "",
             "typenode": false,
             "data": {
-              "command": "dumpsys media_session | grep -A 30 'package=com.google.android.youtube' | grep -m1 'description=' > /sdcard/nxf_yt.txt",
-              "var": ""
+              "message": "{device.name}: reproduciendo {actual}"
             },
             "inputs": {
               "input_1": {
@@ -1265,13 +1264,13 @@
           },
           "36": {
             "id": 36,
-            "name": "set_var",
-            "class": "n-set_var",
+            "name": "random_wait",
+            "class": "n-random_wait",
             "html": "",
             "typenode": false,
             "data": {
-              "name": "visto",
-              "value": "0"
+              "min": 8000,
+              "max": 11000
             },
             "inputs": {
               "input_1": {
@@ -1298,13 +1297,13 @@
           },
           "37": {
             "id": 37,
-            "name": "random_wait",
-            "class": "n-random_wait",
+            "name": "shell",
+            "class": "n-shell",
             "html": "",
             "typenode": false,
             "data": {
-              "min": 25000,
-              "max": 35000
+              "command": "dumpsys media_session | grep -A 30 'package=com.google.android.youtube' | grep -m1 'description=' > /sdcard/nxf_yt.txt",
+              "var": ""
             },
             "inputs": {
               "input_1": {
@@ -1312,10 +1311,6 @@
                   {
                     "node": "36",
                     "input": "output_1"
-                  },
-                  {
-                    "node": "41",
-                    "input": "output_2"
                   }
                 ]
               }
@@ -1335,14 +1330,13 @@
           },
           "38": {
             "id": 38,
-            "name": "math_var",
-            "class": "n-math_var",
+            "name": "set_var",
+            "class": "n-set_var",
             "html": "",
             "typenode": false,
             "data": {
               "name": "visto",
-              "op": "+",
-              "value": "30"
+              "value": "0"
             },
             "inputs": {
               "input_1": {
@@ -1369,13 +1363,13 @@
           },
           "39": {
             "id": 39,
-            "name": "shell",
-            "class": "n-shell",
+            "name": "random_wait",
+            "class": "n-random_wait",
             "html": "",
             "typenode": false,
             "data": {
-              "command": "d=$(dumpsys media_session | grep -A 30 'package=com.google.android.youtube'); s=$(echo \"$d\" | grep -m1 -o 'state=[0-9][0-9]*'); t=$(echo \"$d\" | grep -m1 'description='); case \"$s\" in ''|state=3|state=6|state=8) if [ \"$t\" = \"$(cat /sdcard/nxf_yt.txt 2>/dev/null)\" ]; then echo sigue; else echo fin; fi;; *) echo fin;; esac",
-              "var": "estado"
+              "min": 25000,
+              "max": 35000
             },
             "inputs": {
               "input_1": {
@@ -1383,6 +1377,10 @@
                   {
                     "node": "38",
                     "input": "output_1"
+                  },
+                  {
+                    "node": "43",
+                    "input": "output_2"
                   }
                 ]
               }
@@ -1402,14 +1400,14 @@
           },
           "40": {
             "id": 40,
-            "name": "if_var",
-            "class": "n-if_var",
+            "name": "math_var",
+            "class": "n-math_var",
             "html": "",
             "typenode": false,
             "data": {
-              "name": "estado",
-              "op": "==",
-              "value": "fin"
+              "name": "visto",
+              "op": "+",
+              "value": "30"
             },
             "inputs": {
               "input_1": {
@@ -1425,14 +1423,6 @@
               "output_1": {
                 "connections": [
                   {
-                    "node": "42",
-                    "output": "input_1"
-                  }
-                ]
-              },
-              "output_2": {
-                "connections": [
-                  {
                     "node": "41",
                     "output": "input_1"
                   }
@@ -1444,21 +1434,20 @@
           },
           "41": {
             "id": 41,
-            "name": "if_var",
-            "class": "n-if_var",
+            "name": "shell",
+            "class": "n-shell",
             "html": "",
             "typenode": false,
             "data": {
-              "name": "visto",
-              "op": ">=",
-              "value": "{max_seg}"
+              "command": "d=$(dumpsys media_session | grep -A 30 'package=com.google.android.youtube'); s=$(echo \"$d\" | grep -m1 -o 'state=[0-9][0-9]*'); t=$(echo \"$d\" | grep -m1 'description='); case \"$s\" in ''|state=3|state=6|state=8) if [ \"$t\" = \"$(cat /sdcard/nxf_yt.txt 2>/dev/null)\" ]; then echo sigue; else echo fin; fi;; *) echo fin;; esac",
+              "var": "estado"
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
                     "node": "40",
-                    "input": "output_2"
+                    "input": "output_1"
                   }
                 ]
               }
@@ -1468,14 +1457,6 @@
                 "connections": [
                   {
                     "node": "42",
-                    "output": "input_1"
-                  }
-                ]
-              },
-              "output_2": {
-                "connections": [
-                  {
-                    "node": "37",
                     "output": "input_1"
                   }
                 ]
@@ -1486,57 +1467,20 @@
           },
           "42": {
             "id": 42,
-            "name": "shell",
-            "class": "n-shell",
+            "name": "if_var",
+            "class": "n-if_var",
             "html": "",
             "typenode": false,
             "data": {
-              "command": "input keyevent 127",
-              "var": ""
+              "name": "estado",
+              "op": "==",
+              "value": "fin"
             },
             "inputs": {
               "input_1": {
                 "connections": [
-                  {
-                    "node": "40",
-                    "input": "output_1"
-                  },
                   {
                     "node": "41",
-                    "input": "output_1"
-                  }
-                ]
-              }
-            },
-            "outputs": {
-              "output_1": {
-                "connections": [
-                  {
-                    "node": "43",
-                    "output": "input_1"
-                  }
-                ]
-              }
-            },
-            "pos_x": 1677,
-            "pos_y": 1820
-          },
-          "43": {
-            "id": 43,
-            "name": "math_var",
-            "class": "n-math_var",
-            "html": "",
-            "typenode": false,
-            "data": {
-              "name": "vistos",
-              "op": "+",
-              "value": "1"
-            },
-            "inputs": {
-              "input_1": {
-                "connections": [
-                  {
-                    "node": "42",
                     "input": "output_1"
                   }
                 ]
@@ -1550,6 +1494,56 @@
                     "output": "input_1"
                   }
                 ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "43",
+                    "output": "input_1"
+                  }
+                ]
+              }
+            },
+            "pos_x": 1677,
+            "pos_y": 1820
+          },
+          "43": {
+            "id": 43,
+            "name": "if_var",
+            "class": "n-if_var",
+            "html": "",
+            "typenode": false,
+            "data": {
+              "name": "visto",
+              "op": ">=",
+              "value": "{max_seg}"
+            },
+            "inputs": {
+              "input_1": {
+                "connections": [
+                  {
+                    "node": "42",
+                    "input": "output_2"
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "output_1": {
+                "connections": [
+                  {
+                    "node": "44",
+                    "output": "input_1"
+                  }
+                ]
+              },
+              "output_2": {
+                "connections": [
+                  {
+                    "node": "39",
+                    "output": "input_1"
+                  }
+                ]
               }
             },
             "pos_x": 0,
@@ -1557,16 +1551,21 @@
           },
           "44": {
             "id": 44,
-            "name": "log",
-            "class": "n-log",
+            "name": "shell",
+            "class": "n-shell",
             "html": "",
             "typenode": false,
             "data": {
-              "message": "{device.name}: vídeo {vistos} visto (~{visto} s)"
+              "command": "input keyevent 127",
+              "var": ""
             },
             "inputs": {
               "input_1": {
                 "connections": [
+                  {
+                    "node": "42",
+                    "input": "output_1"
+                  },
                   {
                     "node": "43",
                     "input": "output_1"
@@ -1589,12 +1588,14 @@
           },
           "45": {
             "id": 45,
-            "name": "key",
-            "class": "n-key",
+            "name": "math_var",
+            "class": "n-math_var",
             "html": "",
             "typenode": false,
             "data": {
-              "key": "BACK"
+              "name": "vistos",
+              "op": "+",
+              "value": "1"
             },
             "inputs": {
               "input_1": {
@@ -1621,13 +1622,12 @@
           },
           "46": {
             "id": 46,
-            "name": "random_wait",
-            "class": "n-random_wait",
+            "name": "log",
+            "class": "n-log",
             "html": "",
             "typenode": false,
             "data": {
-              "min": 2000,
-              "max": 3500
+              "message": "{device.name}: vídeo {vistos} visto (~{visto} s)"
             },
             "inputs": {
               "input_1": {
@@ -1643,7 +1643,7 @@
               "output_1": {
                 "connections": [
                   {
-                    "node": "23",
+                    "node": "47",
                     "output": "input_1"
                   }
                 ]
@@ -1654,27 +1654,19 @@
           },
           "47": {
             "id": 47,
-            "name": "log",
-            "class": "n-log",
+            "name": "key",
+            "class": "n-key",
             "html": "",
             "typenode": false,
             "data": {
-              "message": "{device.name}: no se encontró el siguiente vídeo en la lista de {canal}"
+              "key": "BACK"
             },
             "inputs": {
               "input_1": {
                 "connections": [
                   {
-                    "node": "28",
+                    "node": "46",
                     "input": "output_1"
-                  },
-                  {
-                    "node": "29",
-                    "input": "output_2"
-                  },
-                  {
-                    "node": "30",
-                    "input": "output_2"
                   }
                 ]
               }
@@ -1694,20 +1686,17 @@
           },
           "48": {
             "id": 48,
-            "name": "log",
-            "class": "n-log",
+            "name": "random_wait",
+            "class": "n-random_wait",
             "html": "",
             "typenode": false,
             "data": {
-              "message": "{device.name}: {vistos} vídeos vistos de {canal}"
+              "min": 2000,
+              "max": 3500
             },
             "inputs": {
               "input_1": {
                 "connections": [
-                  {
-                    "node": "23",
-                    "input": "output_2"
-                  },
                   {
                     "node": "47",
                     "input": "output_1"
@@ -1719,7 +1708,7 @@
               "output_1": {
                 "connections": [
                   {
-                    "node": "49",
+                    "node": "25",
                     "output": "input_1"
                   }
                 ]
@@ -1730,6 +1719,82 @@
           },
           "49": {
             "id": 49,
+            "name": "log",
+            "class": "n-log",
+            "html": "",
+            "typenode": false,
+            "data": {
+              "message": "{device.name}: no se encontró el siguiente vídeo en la lista de {canal}"
+            },
+            "inputs": {
+              "input_1": {
+                "connections": [
+                  {
+                    "node": "30",
+                    "input": "output_1"
+                  },
+                  {
+                    "node": "31",
+                    "input": "output_2"
+                  },
+                  {
+                    "node": "32",
+                    "input": "output_2"
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "output_1": {
+                "connections": [
+                  {
+                    "node": "50",
+                    "output": "input_1"
+                  }
+                ]
+              }
+            },
+            "pos_x": 1677,
+            "pos_y": 2184
+          },
+          "50": {
+            "id": 50,
+            "name": "log",
+            "class": "n-log",
+            "html": "",
+            "typenode": false,
+            "data": {
+              "message": "{device.name}: {vistos} vídeos vistos de {canal}"
+            },
+            "inputs": {
+              "input_1": {
+                "connections": [
+                  {
+                    "node": "25",
+                    "input": "output_2"
+                  },
+                  {
+                    "node": "49",
+                    "input": "output_1"
+                  }
+                ]
+              }
+            },
+            "outputs": {
+              "output_1": {
+                "connections": [
+                  {
+                    "node": "51",
+                    "output": "input_1"
+                  }
+                ]
+              }
+            },
+            "pos_x": 0,
+            "pos_y": 2548
+          },
+          "51": {
+            "id": 51,
             "name": "key",
             "class": "n-key",
             "html": "",
@@ -1741,7 +1806,7 @@
               "input_1": {
                 "connections": [
                   {
-                    "node": "48",
+                    "node": "50",
                     "input": "output_1"
                   }
                 ]
@@ -1752,12 +1817,12 @@
                 "connections": []
               }
             },
-            "pos_x": 1677,
-            "pos_y": 2184
+            "pos_x": 280,
+            "pos_y": 2548
           }
         }
       }
     }
   },
-  "updatedAt": 1793140660848
+  "updatedAt": 1793143469303
 }

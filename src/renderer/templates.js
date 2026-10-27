@@ -146,12 +146,14 @@ export const TEMPLATES = [
   },
   {
     name: 'YouTube: ver vídeos de un canal',
-    description: 'Busca el canal de la variable "canal" (su @usuario), abre su pestaña Vídeos y los reproduce uno tras otro, cada uno completo o hasta "max_seg" segundos. Los XPath están en variables al principio: si en tu teléfono no encuentra algo, copia del Inspector el XPath (absoluto o corto) y pégalo en la variable xp_… correspondiente.',
+    description: 'Busca el canal de la variable "canal" (su @usuario), abre su pestaña Vídeos y los reproduce uno tras otro, cada uno completo o hasta "max_seg" segundos. Los XPath están en variables al principio (absoluto | corto, de YouTube en español): si en tu teléfono no encuentra algo, copia del Inspector el XPath y pégalo en la variable xp_… correspondiente.',
     build: () => {
       // Cómo reconoce YouTube en español un vídeo de la lista (su descripción accesible).
       const VID = 'contains(@content-desc,"visualizaciones") or contains(@content-desc,"reproducciones") or contains(@content-desc," vistas") '
         + 'or contains(@content-desc,"minutos") or contains(@content-desc,"segundos") or contains(@content-desc,"views")';
       const nextVideo = `(//*[@content-desc=$ultimo or @text=$ultimo]/following::*[${VID}])[1]`;
+      // Ruta común de YouTube (Android, en español) hasta el contenido de cada pantalla, sacada del Inspector.
+      const ABS = '/hierarchy/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/android.widget.LinearLayout/android.widget.FrameLayout/androidx.drawerlayout.widget.DrawerLayout/android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout[2]/android.view.ViewGroup/android.view.ViewGroup/android.widget.FrameLayout[2]/android.widget.ScrollView';
       const yt = "dumpsys media_session | grep -A 30 'package=com.google.android.youtube'";
       const capture = `${yt} | grep -m1 'description=' > /sdcard/nxf_yt.txt`;
       const check = `d=$(${yt}); s=$(echo "$d" | grep -m1 -o 'state=[0-9][0-9]*'); t=$(echo "$d" | grep -m1 'description='); `
@@ -164,11 +166,14 @@ export const TEMPLATES = [
       add('canal', 'set_var', { name: 'canal', value: '@MrBeast' });
       add('videos', 'set_var', { name: 'videos', value: '20' });
       add('maxSeg', 'set_var', { name: 'max_seg', value: '600' });
-      add('xpBuscar', 'set_var', { name: 'xp_buscar', value: '//*[@content-desc="Buscar" or @content-desc="Buscar en YouTube" or @resource-id="com.google.android.youtube:id/menu_item_1"]' });
-      add('xpCanal', 'set_var', { name: 'xp_canal', value: '(//*[contains(@content-desc,"suscriptores") and contains(@content-desc,$canal)])[1]' });
-      add('xpPestana', 'set_var', { name: 'xp_pestana_videos', value: '//*[@text="Vídeos" or @content-desc="Vídeos" or @text="Videos" or @content-desc="Videos"]' });
-      add('xpVideo', 'set_var', { name: 'xp_video', value: `(//*[${VID}])[1]` });
+      add('xpBuscar', 'set_var', { name: 'xp_buscar', value: `${ABS}/android.widget.LinearLayout/android.widget.FrameLayout/android.view.ViewGroup/android.support.v7.widget.LinearLayoutCompat/android.widget.FrameLayout[2]/android.view.ViewGroup/android.widget.ImageView | //*[@content-desc="Buscar" or @content-desc="Buscar en YouTube"]` });
+      add('xpCanal', 'set_var', { name: 'xp_canal', value: `${ABS}/android.widget.FrameLayout/android.widget.FrameLayout/android.support.v7.widget.RecyclerView/android.view.ViewGroup[1]/android.view.ViewGroup[2] | //*[@content-desc="Ver canal"]` });
+      add('xpPestana', 'set_var', { name: 'xp_pestana_videos', value: `${ABS}/android.widget.LinearLayout/android.view.ViewGroup/android.widget.FrameLayout/android.widget.HorizontalScrollView/android.widget.LinearLayout/android.widget.Button[2] | //*[@content-desc="Vídeos" or @text="Vídeos" or @content-desc="Videos" or @text="Videos"]` });
+      add('xpVideo', 'set_var', { name: 'xp_video', value: `${ABS}/android.widget.FrameLayout[2]/android.widget.FrameLayout/androidx.viewpager.widget.ViewPager/android.view.ViewGroup/android.support.v7.widget.RecyclerView/android.view.ViewGroup[2] | (//*[${VID}])[1]` });
       add('vistos', 'set_var', { name: 'vistos', value: '0' });
+      // Se cierra antes para que YouTube arranque siempre en Inicio (de ahí sale el XPath de la lupa).
+      add('cerrar', 'stop_app', { package: 'com.google.android.youtube' });
+      add('w00', 'random_wait', { min: 1000, max: 2000 });
       add('open', 'open_app', { package: 'com.google.android.youtube' });
       add('w0', 'random_wait', { min: 4000, max: 6000 });
       // Buscar el canal; si algo falla, se abre su pestaña de vídeos por enlace.
@@ -188,9 +193,9 @@ export const TEMPLATES = [
       add('primero', 'if_var', { name: 'ultimo', op: '==', value: '' });
       add('bajar', 'swipe', { x1: '50%', y1: '72%', x2: '50%', y2: '45%', ms: 700, humanize: false });
       add('w5', 'random_wait', { min: 1200, max: 2200 });
-      add('leerSig', 'read_text', { xpath: nextVideo, var: 'actual', timeout: 2000 });
+      add('leerSig', 'read_text', { id: '', xpath: nextVideo, var: 'actual', timeout: 2000 });
       add('ultimoVisible', 'if_xpath', { xpath: '//*[@content-desc=$ultimo or @text=$ultimo]', timeout: 1000 });
-      add('leerPrimero', 'read_text', { xpath: '{xp_video}', var: 'actual', timeout: 6000 });
+      add('leerPrimero', 'read_text', { id: '', xpath: '{xp_video}', var: 'actual', timeout: 6000 });
       add('tapPrimero', 'tap_xpath', { xpath: '{xp_video}', timeout: 3000 });
       add('tapSig', 'tap_xpath', { xpath: nextVideo, timeout: 3000 });
       add('guardar', 'set_var', { name: 'ultimo', value: '{actual}' });
@@ -215,7 +220,7 @@ export const TEMPLATES = [
       const L = (a, out, b) => [N[a], out, N[b]];
       const chain = (...keys) => keys.slice(1).map((k, i) => L(keys[i], 0, k));
       return buildGraph(nodes.map((n, i) => ({ ...n, x: (i % 7) * 215, y: Math.floor(i / 7) * 280 })), [
-        ...chain('start', 'canal', 'videos', 'maxSeg', 'xpBuscar', 'xpCanal', 'xpPestana', 'xpVideo', 'vistos', 'open', 'w0', 'tapBuscar', 'w1', 'escribir', 'enter', 'w2', 'tapCanal', 'w3', 'tapPestana', 'w4', 'ultimo0', 'loop'),
+        ...chain('start', 'canal', 'videos', 'maxSeg', 'xpBuscar', 'xpCanal', 'xpPestana', 'xpVideo', 'vistos', 'cerrar', 'w00', 'open', 'w0', 'tapBuscar', 'w1', 'escribir', 'enter', 'w2', 'tapCanal', 'w3', 'tapPestana', 'w4', 'ultimo0', 'loop'),
         L('tapBuscar', 1, 'enlace'), L('tapCanal', 1, 'enlace'), L('tapPestana', 1, 'enlace'), L('enlace', 0, 'w4'),
         L('loop', 0, 'primero'), L('loop', 1, 'fin'),
         L('primero', 0, 'leerPrimero'), L('primero', 1, 'bajar'), ...chain('bajar', 'w5', 'leerSig'),

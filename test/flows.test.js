@@ -252,7 +252,7 @@ class YouTubePhone {
   elements() {
     switch (this.screen) {
       case 'home': return this.searchWorks ? [{ desc: 'Buscar', b: [800, 100, 900, 200], go: () => { this.screen = 'search'; } }] : [];
-      case 'results': return [{ desc: `MrBeast @MrBeast 300 M de suscriptores`, b: [0, 300, 1080, 500], go: () => { this.screen = 'channel'; } }];
+      case 'results': return [{ desc: 'Ver canal', b: [500, 300, 1000, 400], go: () => { this.screen = 'channel'; } }];
       case 'channel': return [{ text: 'Vídeos', b: [300, 600, 500, 700], go: () => { this.screen = 'videos'; } }];
       case 'videos': {
         // Cada tarjeta ocupa 800 px; se ven las que caen entre 400 y 2340.
