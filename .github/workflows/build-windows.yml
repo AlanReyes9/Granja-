@@ -34,3 +34,23 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.exe
+      # Cada push a master deja los .exe en la release "ultima": siempre el mismo enlace de descarga.
+      - name: Mover la etiqueta "ultima" a este commit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        shell: bash
+        run: |
+          git tag -f ultima
+          git push -f origin refs/tags/ultima
+      - name: Publicar en la release "ultima"
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ultima
+          name: Nexus Farmer - última versión
+          body: |
+            Compilación automática de `${{ github.sha }}`.
+            - **NexusFarmer-Setup-1.0.0.exe**: instalador.
+            - **NexusFarmer-Portable-1.0.0.exe**: se abre sin instalar.
+          make_latest: true
+          overwrite_files: true
+          files: dist/*.exe
