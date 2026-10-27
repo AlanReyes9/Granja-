@@ -251,7 +251,7 @@ export class Engine extends EventEmitter {
       case 'tap_text':
       case 'tap_id':
       case 'tap_xpath': {
-        const query = node.type === 'tap_id' ? { id: p.id } : node.type === 'tap_xpath' ? { xpath: p.xpath } : { text: p.text, exact: !!p.exact };
+        const query = node.type === 'tap_id' ? { id: p.id } : node.type === 'tap_xpath' ? { xpath: p.xpath, vars } : { text: p.text, exact: !!p.exact };
         const found = await A.waitForNode(device, query, num(p.timeout, 5000), signal);
         if (!found) { log(`No se encontró "${p.text || p.id || p.xpath}"`, 'warn'); return 1; }
         await A.tap(device, found.cx, found.cy, 3);
@@ -259,12 +259,12 @@ export class Engine extends EventEmitter {
       }
       case 'if_text':
       case 'if_xpath': {
-        const query = node.type === 'if_xpath' ? { xpath: p.xpath } : { text: p.text, exact: !!p.exact };
+        const query = node.type === 'if_xpath' ? { xpath: p.xpath, vars } : { text: p.text, exact: !!p.exact };
         const found = await A.waitForNode(device, query, num(p.timeout, 3000), signal);
         return found ? 0 : 1;
       }
       case 'read_text': {
-        const found = A.findNode(await A.dumpUi(device, signal), { id: p.id });
+        const found = A.findNode(await A.dumpUi(device, signal), p.xpath ? { xpath: p.xpath, vars } : { id: p.id });
         if (!found) return 1;
         vars[p.var || 'texto'] = found.text || found.desc;
         return 0;

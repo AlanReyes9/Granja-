@@ -152,8 +152,8 @@ export async function dumpUi(device, signal) {
   throw new Error(`No se pudieron leer los elementos de la pantalla (uiautomator): ${last || 'sin respuesta'}`);
 }
 
-export function findNode(nodes, { text, exact, id, xpath }) {
-  if (xpath) return queryXpath(nodes, xpath)[0];
+export function findNode(nodes, { text, exact, id, xpath, vars }) {
+  if (xpath) return queryXpath(nodes, xpath, vars)[0];
   if (id) return nodes.find((n) => n.id === id || n.id.endsWith(`:id/${id}`));
   const needle = String(text).toLowerCase();
   const match = (s) => (exact ? s.toLowerCase() === needle : s.toLowerCase().includes(needle));
@@ -163,12 +163,25 @@ export function findNode(nodes, { text, exact, id, xpath }) {
 /** Espera hasta que aparezca un elemento o venza el tiempo. */
 export async function waitForNode(device, query, timeout, signal) {
   const end = Date.now() + Math.max(0, timeout);
+  let readOk = false;
+  let lastError;
   do {
-    const node = findNode(await dumpUi(device, signal), query);
+    let nodes;
+    try {
+      nodes = await dumpUi(device, signal);
+      readOk = true;
+    } catch (e) {
+      // Con vídeo o animaciones uiautomator falla a ratos: se sigue intentando hasta que venza el tiempo.
+      if (signal?.aborted) throw e;
+      lastError = e;
+    }
+    const node = nodes && findNode(nodes, query);
     if (node) return node;
     if (Date.now() >= end) break;
     await sleep(700, signal);
   } while (Date.now() < end);
+  // Si no se pudo leer la pantalla ni una vez, es un problema real y se avisa en vez de decir "no encontrado".
+  if (!readOk && lastError) throw lastError;
   return null;
 }
 

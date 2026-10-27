@@ -241,3 +241,124 @@ test('Instagram: si ya lo sigue no toca Seguir, y sin buscador abre el perfil co
   assert.match(msgs, /ya seguías a otra.cuenta/);
   assert.match(msgs, /2 me gusta en otra.cuenta/);
 });
+
+// YouTube simulado: búsqueda, canal, pestaña de vídeos (lista con scroll) y reproductor con sesión multimedia.
+class YouTubePhone {
+  constructor({ durations = [], searchWorks = true } = {}) {
+    Object.assign(this, { durations, searchWorks, screen: 'none', typed: '', top: 0, playing: null, elapsed: 0, watched: [], cmds: [], descFile: '' });
+  }
+  async getScreenSize() { return { width: 1080, height: 2340 }; }
+  title(i) { return `Vídeo "${i}" - ${Math.ceil(this.durations[i] / 60)} minutos - MrBeast - ${i + 3} M de reproducciones - hace ${i + 1} días`; }
+  elements() {
+    switch (this.screen) {
+      case 'home': return this.searchWorks ? [{ desc: 'Buscar', b: [800, 100, 900, 200], go: () => { this.screen = 'search'; } }] : [];
+      case 'results': return [{ desc: `MrBeast @MrBeast 300 M de suscriptores`, b: [0, 300, 1080, 500], go: () => { this.screen = 'channel'; } }];
+      case 'channel': return [{ text: 'Vídeos', b: [300, 600, 500, 700], go: () => { this.screen = 'videos'; } }];
+      case 'videos': {
+        // Cada tarjeta ocupa 800 px; se ven las que caen entre 400 y 2340.
+        const out = [];
+        for (let i = 0; i < this.durations.length; i++) {
+          const y = 400 + i * 800 - this.top;
+          if (y + 800 > 400 && y < 2340) out.push({ desc: this.title(i), b: [0, Math.max(400, y), 1080, Math.min(2340, y + 800)], go: () => this.play(i) });
+        }
+        return out;
+      }
+      default: return [];
+    }
+  }
+  play(i) { this.screen = 'watch'; this.playing = i; this.elapsed = 0; this.watched.push({ i, seconds: 0 }); }
+  advance(ms) {
+    if (this.playing == null) return;
+    this.elapsed += ms / 1000;
+    this.watched.at(-1).seconds = this.elapsed;
+  }
+  mediaSession() {
+    if (this.playing == null) return '';
+    const ended = this.elapsed >= this.durations[this.playing];
+    return `    YouTube com.google.android.youtube/YouTube (userId=0)\n      package=com.google.android.youtube\n      state=PlaybackState {state=${ended || this.paused ? 2 : 3}, position=1}\n      metadata: size=7, description=Vídeo ${this.playing}, MrBeast, null`;
+  }
+  async shell(cmd) {
+    this.cmds.push(cmd);
+    if (cmd.includes('uiautomator dump')) {
+      if (this.screen === 'watch') return 'ERROR: could not get idle state.';
+      const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const nodes = this.elements().map((e) => `<node text="${esc(e.text)}" resource-id="" class="android.view.ViewGroup" content-desc="${esc(e.desc)}" clickable="true" bounds="[${e.b[0]},${e.b[1]}][${e.b[2]},${e.b[3]}]" />`);
+      return `<?xml version="1.0"?><hierarchy rotation="0"><node class="android.widget.FrameLayout" bounds="[0,0][1080,2340]"><node class="androidx.recyclerview.widget.RecyclerView" bounds="[0,400][1080,2340]">${nodes.join('')}</node></node></hierarchy>`;
+    }
+    if (cmd.startsWith('cmd package resolve-activity')) return 'com.google.android.youtube/.HomeActivity';
+    if (cmd.startsWith('am start -n com.google.android.youtube')) { this.screen = 'home'; return 'Starting'; }
+    if (cmd.startsWith("am start -a android.intent.action.VIEW -d 'https://www.youtube.com/")) { this.screen = 'videos'; this.viaLink = cmd; return 'Starting'; }
+    if (cmd.startsWith('dumpsys media_session')) {
+      // El comando real lo interpreta el sh del teléfono: aquí basta con imitar su resultado.
+      const desc = (this.mediaSession().match(/.*description=.*/) || [''])[0];
+      if (cmd.includes('> /sdcard/nxf_yt.txt')) { this.descFile = desc; return ''; }
+    }
+    if (cmd.startsWith('d=$(dumpsys media_session')) {
+      const ms = this.mediaSession();
+      const state = (ms.match(/state=\d+/) || [''])[0];
+      const desc = (ms.match(/.*description=.*/) || [''])[0];
+      return ['', 'state=3', 'state=6', 'state=8'].includes(state) && desc === this.descFile ? 'sigue' : 'fin';
+    }
+    if (cmd === 'input keyevent 127') { this.paused = true; return ''; }
+    if (cmd === 'input keyevent 4' && this.screen === 'watch') { this.screen = 'videos'; this.playing = null; this.paused = false; return ''; }
+    if (cmd === 'input keyevent 66' && this.screen === 'search') { this.screen = 'results'; return ''; }
+    const tap = cmd.match(/^input tap (\d+) (\d+)/);
+    if (tap) {
+      const [x, y] = [Number(tap[1]), Number(tap[2])];
+      this.elements().find((e) => x >= e.b[0] && x <= e.b[2] && y >= e.b[1] && y <= e.b[3])?.go();
+      return '';
+    }
+    const swipe = cmd.match(/^input swipe \d+ (\d+) \d+ (\d+)/);
+    if (swipe && this.screen === 'videos') { this.top = Math.max(0, this.top + Number(swipe[1]) - Number(swipe[2])); return ''; }
+    const text = cmd.match(/^input text '(.*)'$/);
+    if (text && this.screen === 'search') { this.typed += text[1]; return ''; }
+    return '';
+  }
+}
+
+// Las esperas del reproductor (~30 s) avanzan el vídeo simulado en vez de esperar de verdad.
+function youtubeFlow(phone, { canal = '@MrBeast', videos = 3, maxSeg = 600 } = {}) {
+  const graph = fast(TEMPLATES.find((t) => t.name.startsWith('YouTube')).build());
+  for (const n of Object.values(graph.drawflow.Home.data)) {
+    if (n.name === 'set_var' && n.data.name === 'canal') n.data.value = canal;
+    if (n.name === 'set_var' && n.data.name === 'videos') n.data.value = String(videos);
+    if (n.name === 'set_var' && n.data.name === 'max_seg') n.data.value = String(maxSeg);
+    if (n.name === 'loop') n.data.times = '{videos}';
+    // La espera de ~30 s entre comprobaciones: se marca para que el teléfono simulado avance 30 s.
+    if (n.name === 'math_var' && n.data.name === 'visto') n.data.value = '30';
+  }
+  const shell = phone.shell.bind(phone);
+  phone.shell = async (cmd) => {
+    if (cmd.startsWith('d=$(dumpsys media_session')) phone.advance(30000);
+    return shell(cmd);
+  };
+  return graph;
+}
+
+test('YouTube: busca el canal y ve los vídeos en orden, completos o hasta el máximo', async () => {
+  // 2 min, 15 min (se corta a los 10), 45 s, 7 min.
+  const phone = new YouTubePhone({ durations: [120, 900, 45, 420] });
+  const { engine } = engineFor(phone);
+  const res = await run(engine, youtubeFlow(phone, { videos: 4 }));
+  assert.equal(res.status, 'ok', res.logs.filter((l) => l.level === 'error').map((l) => l.message).join(' | '));
+  assert.equal(phone.typed, '@MrBeast');
+  assert.ok(!phone.viaLink, 'con buscador no hace falta el enlace');
+  assert.deepEqual(phone.watched.map((w) => w.i), [0, 1, 2, 3], 'uno tras otro, sin repetir ni saltar');
+  const secs = phone.watched.map((w) => w.seconds);
+  assert.ok(secs[0] >= 120 && secs[0] < 160, `vídeo 0 completo: ${secs[0]}`);
+  assert.ok(secs[1] >= 600 && secs[1] < 640, `vídeo 1 cortado a 10 min: ${secs[1]}`);
+  assert.ok(secs[2] >= 45 && secs[2] < 80, `vídeo 2 completo: ${secs[2]}`);
+  assert.match(res.logs.map((l) => l.message).join('\n'), /4 vídeos vistos de @MrBeast/);
+});
+
+test('YouTube: sin buscador abre el canal por enlace y para si se acaba la lista', async () => {
+  const phone = new YouTubePhone({ durations: [30, 30], searchWorks: false });
+  const { engine } = engineFor(phone);
+  const res = await run(engine, youtubeFlow(phone, { canal: '@otro', videos: 5 }));
+  assert.equal(res.status, 'ok', res.logs.filter((l) => l.level === 'error').map((l) => l.message).join(' | '));
+  assert.match(phone.viaLink, /youtube\.com\/@otro\/videos/);
+  assert.deepEqual(phone.watched.map((w) => w.i), [0, 1]);
+  const msgs = res.logs.map((l) => l.message).join('\n');
+  assert.match(msgs, /no hay más vídeos/);
+  assert.match(msgs, /2 vídeos vistos de @otro/);
+});

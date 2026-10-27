@@ -70,7 +70,7 @@ export const NODE_TYPES = [
   { type: 'if_text', label: 'Si aparece texto', category: 'ui', icon: 'eye', outputs: ['sí', 'no'],
     params: [t('text', 'Texto', 'Iniciar sesión'), b('exact', 'Coincidencia exacta', false), n('timeout', 'Esperar hasta (ms)', 3000)] },
   { type: 'read_text', label: 'Leer texto de elemento', category: 'ui', icon: 'book', outputs: ['encontrado', 'no encontrado'],
-    params: [t('id', 'resource-id', 'com.app:id/titulo'), t('var', 'Guardar en variable', 'texto')] },
+    params: [t('id', 'resource-id', 'com.app:id/titulo'), t('xpath', 'o XPath (si lo rellenas, se usa en vez del id)', ''), t('var', 'Guardar en variable', 'texto')] },
   { type: 'if_color', label: 'Si color en punto', category: 'ui', icon: 'palette', outputs: ['sí', 'no'],
     params: [t('x', 'X (px o %)', '50%'), t('y', 'Y (px o %)', '50%'), t('color', 'Color hex', '#FFFFFF'), n('tolerance', 'Tolerancia (0-255)', 24)] },
   { type: 'screenshot', label: 'Captura de pantalla', category: 'ui', icon: 'camera', outputs: ['siguiente'],

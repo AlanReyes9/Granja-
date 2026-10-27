@@ -75,12 +75,12 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - *Apps:* abrir (con `am start` y la actividad de inicio de la app, como el launcher), cerrar, borrar datos, "si la app está en primer plano", abrir URL, instalar y desinstalar.
 - *Sistema:* shell con la salida guardada en una variable, despertar y desbloquear con PIN, proxy, proxy asignado, rotar proxy, **modo avión para rotar IP**, Wi-Fi y envío de archivos.
 - *Datos e integraciones:* fila de una tabla CSV, petición HTTP y notificación.
-- Plantillas en el texto: `{variable}`, `{rand:1-100}`, `{pick:hola|buenas}`, `{device.name}`, `{timestamp}`.
+- Plantillas en el texto: `{variable}`, `{rand:1-100}`, `{pick:hola|buenas}`, `{device.name}`, `{timestamp}`. En los XPath, las variables se usan como `$variable` (admiten comillas en el valor).
 - En el lienzo se resalta en tiempo real el nodo que está ejecutando cada teléfono, y el registro muestra cada paso con sus parámetros.
 - Doble clic en un nodo de la paleta lo añade a continuación del seleccionado (o del último añadido) y lo conecta solo.
 - Si un paso falla, el registro dice en qué nodo y por qué (app no instalada, uiautomator sin respuesta…).
 - Ejecución en paralelo con límite de concurrencia y **arranque escalonado** entre dispositivos.
-- Plantillas listas para usar, importar y exportar flujos (`.nexus.json`), y Ctrl+S para guardar.
+- Plantillas listas para usar (entre ellas *Instagram: seguir perfil y dar me gusta* y *YouTube: ver vídeos de un canal*), importar y exportar flujos (`.nexus.json`, también en [`docs/flujos`](docs/flujos)), y Ctrl+S para guardar.
 
 **Extras frente a GenFarmer**
 - **Programador**: lanza flujos cada N minutos o a una hora fija ciertos días, en todos los teléfonos, en un grupo o en una lista.

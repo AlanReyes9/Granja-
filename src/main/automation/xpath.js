@@ -7,14 +7,19 @@
 //   //*[@text="Aceptar" and @clickable="true"]
 //   //*[contains(@content-desc,"Perfil")]   //*[starts-with(@text,"Hola")]   //*[text()="Enviar"]
 //   (//android.widget.EditText)[2]   //*[@text="x"]/..   //*[last()]   //*[not(@text="")]
+//   //*[@text=$perfil]   (variables del flujo: el valor se compara tal cual, aunque lleve comillas)
+//   //*[@text="Ana"]/following::android.widget.Button[1]   …/following-sibling::*[1]
 
-/** Elementos que cumplen el XPath, en orden de documento. `nodes` es la salida de parseUiDump. */
-export function queryXpath(nodes, xpath) {
+/**
+ * Elementos que cumplen el XPath, en orden de documento. `nodes` es la salida de parseUiDump;
+ * `vars`, las variables del flujo que se pueden usar como $nombre.
+ */
+export function queryXpath(nodes, xpath, vars = {}) {
   const expr = new Parser(String(xpath || '').trim()).parseTop();
   // Documento → elemento <hierarchy> → elementos <node>, como en el XML de uiautomator.
   const hierarchy = { hierarchy: true, index: -1, cls: 'hierarchy', attrs: {}, children: nodes.filter((n) => n.parent == null).map((n) => n.index) };
   const root = { root: true, index: -2, hierarchy };
-  const ctx = { nodes, root, hierarchy };
+  const ctx = { nodes, root, hierarchy, vars };
   return evalTop(expr, ctx);
 }
 
@@ -74,6 +79,12 @@ class Parser {
     this.ws();
     if (this.eat('..')) return { axis: 'parent', name: '*', preds: [] };
     if (this.eat('.')) return { axis: 'self', name: '*', preds: [] };
+    const named = this.src.slice(this.i).match(/^(following-sibling|following|child|descendant)::/);
+    if (named) {
+      if (axis === 'descendant' && named[1] !== 'child') this.fail(`no se puede usar // con ${named[1]}::`);
+      this.i += named[0].length;
+      axis = axis === 'descendant' ? 'descendant' : named[1];
+    }
     const m = this.src.slice(this.i).match(/^(\*|[A-Za-z_][\w.$-]*)/);
     if (!m) this.fail('falta el nombre del elemento');
     this.i += m[0].length;
@@ -126,6 +137,13 @@ class Parser {
       const value = this.src.slice(this.i + 1, end);
       this.i = end + 1;
       return { type: 'str', value };
+    }
+    if (c === '$') {
+      this.i++;
+      const m = this.src.slice(this.i).match(/^[\w.-]+/);
+      if (!m) this.fail('falta el nombre de la variable');
+      this.i += m[0].length;
+      return { type: 'var', name: m[0] };
     }
     if (c === '@') {
       this.i++;
@@ -197,6 +215,14 @@ function evalSteps(steps, start, ctx) {
       else if (step.axis === 'parent') groups = n.root ? [] : [[parentOf(ctx, n)]];
       // "//x[1]" es el primer x de cada padre, como en XPath estándar.
       else if (step.axis === 'descendant') groups = descendantsOrSelf(ctx, n).map((p) => children(ctx, p));
+      else if (step.axis === 'following-sibling') {
+        const sib = n.index < 0 ? [] : children(ctx, parentOf(ctx, n));
+        groups = [sib.slice(sib.indexOf(n) + 1)];
+      } else if (step.axis === 'following') {
+        // Todo lo que va después en el documento, sin contar los descendientes del propio elemento.
+        const inside = new Set(descendantsOrSelf(ctx, n).map((x) => x.index));
+        groups = [n.index < 0 ? [] : ctx.nodes.filter((x) => x.index > n.index && !inside.has(x.index))];
+      }
       else groups = [children(ctx, n)];
       for (const g of groups) {
         const named = step.axis === 'parent' || step.axis === 'self' ? g.filter((x) => x.root || nameMatches(x, step.name)) : g.filter((x) => nameMatches(x, step.name));
@@ -223,6 +249,10 @@ function evalExpr(e, ctx) {
     case 'str': return e.value;
     case 'num': return e.value;
     case 'attr': return ctx.node.attrs?.[e.name] ?? null;
+    case 'var': {
+      if (!(e.name in ctx.vars)) throw new XpathError(`La variable $${e.name} del XPath no está definida en el flujo`);
+      return str(ctx.vars[e.name]);
+    }
     case 'and': return truthy(evalExpr(e.left, ctx)) && truthy(evalExpr(e.right, ctx));
     case 'or': return truthy(evalExpr(e.left, ctx)) || truthy(evalExpr(e.right, ctx));
     case 'cmp': {

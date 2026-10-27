@@ -70,3 +70,17 @@ test('XPath generado: único y apunta al elemento correcto', () => {
   assert.equal(tv.xpath, tv.xpathAbs);
   assert.equal(findNode(nodes, { xpath: '//*[@text="Entrar"]' }).cx, 540);
 });
+
+test('XPath: variables del flujo y ejes following / following-sibling', () => {
+  const vars = { u: 'Usuario', raro: `It's "ok"` };
+  const qv = (x) => queryXpath(nodes, x, vars).map((n) => n.text || n.desc || n.id || n.cls);
+  assert.deepEqual(qv('//*[@text=$u]'), ['Usuario']);
+  assert.deepEqual(qv('//*[@text=$raro]'), [`It's "ok"`], 'las comillas del valor no rompen el XPath');
+  assert.deepEqual(qv('//*[@text=$u]/following-sibling::*'), ['com.app:id/pass', 'Entrar']);
+  assert.deepEqual(qv('(//*[@text=$u]/following-sibling::*)[1]'), ['com.app:id/pass']);
+  assert.deepEqual(qv('(//*[@text="Entrar"]/following::android.widget.Button)[1]'), ['Me gusta']);
+  assert.deepEqual(qv('//*[@resource-id="com.app:id/form"]/following::*[@text="Me gusta"]').length, 2);
+  assert.deepEqual(qv('//*[@resource-id="com.app:id/form"]/following::android.widget.EditText'), [], 'following no incluye los descendientes');
+  assert.throws(() => queryXpath(nodes, '//*[@text=$nada]', vars), /\$nada/);
+  assert.throws(() => queryXpath(nodes, '//following::*'), /XPath/);
+});
