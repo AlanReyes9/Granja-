@@ -151,3 +151,93 @@ test('el registro muestra cada paso', async () => {
   const res = await run(engine, buildGraph([{ type: 'start', x: 0, y: 0 }, { type: 'tap', params: { x: '10%', y: '20%' }, x: 0, y: 0 }], [[0, 0, 1]]));
   assert.ok(res.logs.some((l) => l.level === 'step' && l.message.startsWith('Tocar (x: 10%, y: 20%')));
 });
+
+// Instagram simulado: pantallas de inicio, búsqueda, perfil y publicaciones, que cambian con los toques.
+class InstagramPhone {
+  constructor({ followed = false, likedPosts = [], searchWorks = true } = {}) {
+    Object.assign(this, { followed, liked: new Set(likedPosts), searchWorks, screen: 'none', typed: '', post: 0, cmds: [] });
+  }
+  async getScreenSize() { return { width: 1080, height: 2340 }; }
+  elements() {
+    const IG = 'com.instagram.android:id';
+    switch (this.screen) {
+      case 'home': return this.searchWorks ? [{ id: `${IG}/search_tab`, desc: 'Buscar y explorar', b: [432, 2200, 648, 2340], go: () => { this.screen = 'search'; } }] : [];
+      case 'search': return [
+        { id: `${IG}/action_bar_search_edit_text`, text: this.typed || 'Buscar', cls: 'android.widget.EditText', b: [40, 100, 1040, 200], go: () => {} },
+        ...(this.typed ? [{ id: `${IG}/row_search_user_username`, text: this.typed, b: [40, 300, 1040, 400], go: () => { this.screen = 'profile'; } }] : []),
+      ];
+      case 'profile': return [
+        { id: `${IG}/profile_header_follow_button`, text: this.followed ? 'Siguiendo' : 'Seguir', cls: 'android.widget.Button', b: [40, 600, 520, 700], go: () => { this.followed = true; } },
+        { desc: 'Foto de perfil de nasa', b: [40, 250, 240, 450], go: () => { this.screen = 'story'; } },
+        { id: `${IG}/image_button`, desc: 'Foto de nasa en la fila 1, columna 1', b: [0, 1000, 360, 1360], go: () => { this.screen = 'post'; } },
+      ];
+      case 'post': return [0, 1].map((k) => {
+        const i = this.post + k;
+        const liked = this.liked.has(i);
+        return { id: `${IG}/row_feed_button_like`, desc: liked ? 'Ya no me gusta' : 'Me gusta', selected: liked, b: [20, 900 + k * 1000, 120, 1000 + k * 1000], go: () => this.liked.add(i) };
+      });
+      default: return [];
+    }
+  }
+  async shell(cmd) {
+    this.cmds.push(cmd);
+    if (cmd.includes('uiautomator dump')) {
+      const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const nodes = this.elements().map((e) => `<node text="${esc(e.text)}" resource-id="${esc(e.id)}" class="${e.cls || 'android.widget.ImageView'}" content-desc="${esc(e.desc)}" selected="${!!e.selected}" clickable="true" bounds="[${e.b[0]},${e.b[1]}][${e.b[2]},${e.b[3]}]" />`);
+      return `<?xml version="1.0"?><hierarchy rotation="0"><node class="android.widget.FrameLayout" bounds="[0,0][1080,2340]">${nodes.join('')}</node></hierarchy>`;
+    }
+    if (cmd.startsWith('cmd package resolve-activity')) return 'com.instagram.android/com.instagram.mainactivity.LauncherActivity';
+    if (cmd.startsWith('am start -n com.instagram.android')) { this.screen = 'home'; return 'Starting'; }
+    if (cmd.startsWith("am start -a android.intent.action.VIEW -d 'https://www.instagram.com/")) { this.screen = 'profile'; this.viaLink = cmd; return 'Starting'; }
+    const tap = cmd.match(/^input tap (\d+) (\d+)/);
+    if (tap) {
+      const [x, y] = [Number(tap[1]), Number(tap[2])];
+      const hit = this.elements().find((e) => x >= e.b[0] && x <= e.b[2] && y >= e.b[1] && y <= e.b[3]);
+      hit?.go();
+      return '';
+    }
+    const text = cmd.match(/^input text '(.*)'$/);
+    if (text && this.screen === 'search') { this.typed += text[1]; return ''; }
+    if (cmd.startsWith('input swipe') && this.screen === 'post') { this.post++; return ''; }
+    return '';
+  }
+}
+
+function instagramFlow(perfil, likes) {
+  const graph = fast(TEMPLATES.find((t) => t.name.startsWith('Instagram')).build());
+  for (const n of Object.values(graph.drawflow.Home.data)) {
+    if (n.name === 'set_var' && n.data.name === 'perfil') n.data.value = perfil;
+    if (n.name === 'set_var' && n.data.name === 'likes') n.data.value = String(likes);
+    if (n.name === 'loop') n.data.times = '{likes}';
+  }
+  return graph;
+}
+
+test('Instagram: busca el perfil de la variable, lo sigue y da me gusta solo a lo que no lo tiene', async () => {
+  const phone = new InstagramPhone({ likedPosts: [1] });
+  const { engine } = engineFor(phone);
+  const res = await run(engine, instagramFlow('nasa', 4));
+  assert.equal(res.status, 'ok', res.logs.filter((l) => l.level === 'error').map((l) => l.message).join(' | '));
+  assert.equal(phone.typed, 'nasa');
+  assert.equal(phone.followed, true);
+  assert.ok(!phone.viaLink, 'con buscador no hace falta el enlace');
+  // 4 vueltas con 4 me gusta nuevos: la 1 ya lo tenía, así que esa vuelta se lo da a la siguiente visible (la 2).
+  assert.deepEqual([...phone.liked].sort(), [0, 1, 2, 3, 4]);
+  assert.equal(phone.post, 4);
+  const msgs = res.logs.map((l) => l.message).join('\n');
+  assert.match(msgs, /ahora sigues a nasa/);
+  assert.match(msgs, /4 me gusta en nasa/);
+  assert.ok(phone.cmds.includes('input keyevent 3'), 'vuelve a Inicio');
+});
+
+test('Instagram: si ya lo sigue no toca Seguir, y sin buscador abre el perfil con el enlace', async () => {
+  const phone = new InstagramPhone({ followed: true, searchWorks: false });
+  const { engine } = engineFor(phone);
+  const res = await run(engine, instagramFlow('otra.cuenta', 2));
+  assert.equal(res.status, 'ok');
+  assert.match(phone.viaLink, /instagram\.com\/otra\.cuenta\//);
+  assert.equal(phone.followed, true);
+  const msgs = res.logs.map((l) => l.message).join('\n');
+  assert.match(msgs, /ya seguías a otra.cuenta/);
+  assert.match(msgs, /2 me gusta en otra.cuenta/);
+});

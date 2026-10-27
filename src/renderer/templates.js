@@ -89,4 +89,59 @@ export const TEMPLATES = [
       { type: 'log', params: { message: '{device.name} OK ({bateria}%)' }, x: 1110, y: 320 },
     ], [[0, 0, 1], [1, 0, 2], [2, 0, 3], [3, 0, 4], [3, 1, 5]]),
   },
+  {
+    name: 'Instagram: seguir perfil y dar me gusta',
+    description: 'Abre Instagram, busca el perfil de la variable "perfil", lo sigue si no lo sigues y da me gusta a sus publicaciones haciendo scroll con pausas aleatorias. Edita "perfil" y "likes" en los dos primeros nodos.',
+    build: () => {
+      const IG = 'com.instagram.android:id';
+      const likeBtn = `//*[(@resource-id="${IG}/row_feed_button_like" or @resource-id="${IG}/like_button") and (@content-desc="Me gusta" or @content-desc="Like") and not(@selected="true")]`;
+      const followBtn = `//*[(@resource-id="${IG}/profile_header_follow_button" or @class="android.widget.Button") and (@text="Seguir" or @text="Follow" or @text="Seguir también" or @text="Follow back")]`;
+      return buildGraph([
+        /* 0 */ { type: 'start', x: 0, y: 30 },
+        /* 1 */ { type: 'set_var', params: { name: 'perfil', value: 'nasa' }, x: 215, y: 0 },
+        /* 2 */ { type: 'set_var', params: { name: 'likes', value: '{rand:8-15}' }, x: 430, y: 0 },
+        /* 3 */ { type: 'set_var', params: { name: 'likes_dados', value: '0' }, x: 645, y: 0 },
+        /* 4 */ { type: 'open_app', params: { package: 'com.instagram.android' }, x: 860, y: 0 },
+        /* 5 */ { type: 'random_wait', params: { min: 3000, max: 5000 }, x: 1075, y: 0 },
+        // Buscar el perfil.
+        /* 6 */ { type: 'tap_xpath', params: { xpath: `//*[@resource-id="${IG}/search_tab" or @content-desc="Buscar y explorar" or @content-desc="Search and explore"]`, timeout: 8000 }, x: 0, y: 280 },
+        /* 7 */ { type: 'random_wait', params: { min: 1000, max: 2000 }, x: 215, y: 280 },
+        /* 8 */ { type: 'tap_xpath', params: { xpath: `//*[@resource-id="${IG}/action_bar_search_edit_text" or (@class="android.widget.EditText" and (@text="Buscar" or @text="Search"))]`, timeout: 5000 }, x: 430, y: 280 },
+        /* 9 */ { type: 'type_text', params: { text: '{perfil}', humanize: true }, x: 645, y: 280 },
+        /* 10 */ { type: 'random_wait', params: { min: 2500, max: 4000 }, x: 860, y: 280 },
+        /* 11 */ { type: 'tap_xpath', params: { xpath: `//*[@resource-id="${IG}/row_search_user_username" and @text="{perfil}"]`, timeout: 8000 }, x: 1075, y: 280 },
+        // Si la búsqueda falla, el perfil se abre directamente con su enlace.
+        /* 12 */ { type: 'shell', params: { command: "am start -a android.intent.action.VIEW -d 'https://www.instagram.com/{perfil}/' -p com.instagram.android", var: '' }, x: 0, y: 560 },
+        /* 13 */ { type: 'random_wait', params: { min: 3000, max: 5000 }, x: 215, y: 560 },
+        // Seguir solo si el botón dice "Seguir".
+        /* 14 */ { type: 'if_xpath', params: { xpath: followBtn, timeout: 4000 }, x: 430, y: 560 },
+        /* 15 */ { type: 'tap_xpath', params: { xpath: followBtn, timeout: 3000 }, x: 645, y: 480 },
+        /* 16 */ { type: 'log', params: { message: '{device.name}: ahora sigues a {perfil}' }, x: 860, y: 480 },
+        /* 17 */ { type: 'log', params: { message: '{device.name}: ya seguías a {perfil}' }, x: 645, y: 720 },
+        /* 18 */ { type: 'random_wait', params: { min: 1500, max: 3000 }, x: 1075, y: 560 },
+        // Abrir la primera publicación del perfil.
+        /* 19 */ { type: 'tap_xpath', params: { xpath: `(//*[@resource-id="${IG}/image_button" or contains(@content-desc,"fila 1, columna 1") or contains(@content-desc,"row 1, column 1")])[1]`, timeout: 8000 }, x: 0, y: 860 },
+        /* 20 */ { type: 'log', params: { message: '{device.name}: {perfil} no tiene publicaciones visibles (¿cuenta privada?)' }, x: 0, y: 1120 },
+        /* 21 */ { type: 'random_wait', params: { min: 2500, max: 4500 }, x: 215, y: 860 },
+        // Bucle: me gusta (si aún no lo tiene), scroll y pausa aleatoria.
+        /* 22 */ { type: 'loop', params: { times: '{likes}' }, x: 430, y: 860 },
+        /* 23 */ { type: 'if_xpath', params: { xpath: likeBtn, timeout: 3000 }, x: 645, y: 860 },
+        /* 24 */ { type: 'random_wait', params: { min: 800, max: 2000 }, x: 860, y: 860 },
+        /* 25 */ { type: 'tap_xpath', params: { xpath: likeBtn, timeout: 2000 }, x: 1075, y: 860 },
+        /* 26 */ { type: 'math_var', params: { name: 'likes_dados', op: '+', value: '1' }, x: 1075, y: 1120 },
+        /* 27 */ { type: 'random_wait', params: { min: 1000, max: 2500 }, x: 860, y: 1120 },
+        /* 28 */ { type: 'scroll', params: { direction: 'abajo', count: '1' }, x: 645, y: 1120 },
+        /* 29 */ { type: 'random_wait', params: { min: 3000, max: 8000 }, x: 430, y: 1120 },
+        /* 30 */ { type: 'log', params: { message: '{device.name}: {likes_dados} me gusta en {perfil}' }, x: 215, y: 1380 },
+        /* 31 */ { type: 'key', params: { key: 'HOME' }, x: 430, y: 1380 },
+      ], [
+        [0, 0, 1], [1, 0, 2], [2, 0, 3], [3, 0, 4], [4, 0, 5], [5, 0, 6],
+        [6, 0, 7], [6, 1, 12], [7, 0, 8], [8, 0, 9], [8, 1, 12], [9, 0, 10], [10, 0, 11], [11, 0, 13], [11, 1, 12],
+        [12, 0, 13], [13, 0, 14], [14, 0, 15], [14, 1, 17], [15, 0, 16], [15, 1, 17], [16, 0, 18], [17, 0, 18],
+        [18, 0, 19], [19, 0, 21], [19, 1, 20], [21, 0, 22],
+        [22, 0, 23], [23, 0, 24], [23, 1, 28], [24, 0, 25], [25, 0, 26], [25, 1, 28], [26, 0, 27], [27, 0, 28], [28, 0, 29], [29, 0, 22],
+        [22, 1, 30], [30, 0, 31],
+      ]);
+    },
+  },
 ];
