@@ -249,15 +249,18 @@ export class Engine extends EventEmitter {
       case 'key': await device.shell(`input keyevent ${KEYCODES[p.key] ?? p.key}`); return 0;
 
       case 'tap_text':
-      case 'tap_id': {
-        const query = node.type === 'tap_id' ? { id: p.id } : { text: p.text, exact: !!p.exact };
+      case 'tap_id':
+      case 'tap_xpath': {
+        const query = node.type === 'tap_id' ? { id: p.id } : node.type === 'tap_xpath' ? { xpath: p.xpath } : { text: p.text, exact: !!p.exact };
         const found = await A.waitForNode(device, query, num(p.timeout, 5000), signal);
-        if (!found) { log(`No se encontró "${p.text || p.id}"`, 'warn'); return 1; }
+        if (!found) { log(`No se encontró "${p.text || p.id || p.xpath}"`, 'warn'); return 1; }
         await A.tap(device, found.cx, found.cy, 3);
         return 0;
       }
-      case 'if_text': {
-        const found = await A.waitForNode(device, { text: p.text, exact: !!p.exact }, num(p.timeout, 3000), signal);
+      case 'if_text':
+      case 'if_xpath': {
+        const query = node.type === 'if_xpath' ? { xpath: p.xpath } : { text: p.text, exact: !!p.exact };
+        const found = await A.waitForNode(device, query, num(p.timeout, 3000), signal);
         return found ? 0 : 1;
       }
       case 'read_text': {
@@ -286,8 +289,8 @@ export class Engine extends EventEmitter {
       }
 
       case 'open_app': {
-        const out = await device.shell(`monkey -p ${p.package} -c android.intent.category.LAUNCHER 1`);
-        if (/No activities found|monkey aborted|Error/i.test(out)) throw new Error(`La app ${p.package} no está instalada o no se puede abrir`);
+        const component = await A.launchApp(device, p.package);
+        log(`App abierta: ${component}`);
         return 0;
       }
       case 'stop_app': await device.shell(`am force-stop ${p.package}`); return 0;

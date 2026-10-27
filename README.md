@@ -47,7 +47,7 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - El menú lateral (Ctrl+B) y el panel del Centro de control se pueden contraer; la app recuerda cómo los dejaste.
 - Panel lateral con deslizadores de vista grande, miniaturas, calidad y fotogramas por segundo, filtro USB / Wi-Fi / OTG y lista de grupos con contadores (seleccionados / total).
 - Cada teléfono lleva su número, su barra de navegación Android (atrás, inicio, recientes), su conexión, su batería y su proxy o grupo.
-- **Inspector**: muestra los elementos de la pantalla de un teléfono (texto, resource-id, posición en %) para saber qué poner en los nodos *Tocar texto*, *Tocar por resource-id* o *Tocar*.
+- **Inspector**: muestra los elementos de la pantalla de un teléfono (texto, resource-id, **XPath** corto y absoluto, posición en %) para saber qué poner en los nodos *Tocar texto*, *Tocar por resource-id*, *Tocar por XPath* o *Tocar*. Permite probar un XPath sobre la captura (marca los elementos que lo cumplen) y añadir el nodo *Tocar por XPath* al flujo abierto con un clic.
 - **Monitor de tareas**: acceso directo a las ejecuciones en curso.
 
 **Control de la granja**
@@ -68,11 +68,11 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - Nodos *Aplicar proxy asignado* y *Rotar proxy* para usarlos dentro de los flujos.
 - Android aplica el proxy HTTP global del sistema, que no admite usuario y contraseña: con proxys autenticados hay que autorizar la IP de la granja en el proveedor.
 
-**Automatización por nodos** (40 nodos)
+**Automatización por nodos** (42 nodos)
 - *Flujo:* inicio, espera, espera aleatoria, bucles, rama aleatoria (%), variables, condiciones, registro y fin.
 - *Interacción:* tocar (px o %, con variación humana), pulsación larga, deslizar con **curva humanizada**, scroll, escribir texto (también letra a letra) y teclas.
-- *Pantalla/UI:* tocar por texto o por `resource-id` (uiautomator), "si aparece texto", leer texto, **si hay un color en un punto** y captura de pantalla.
-- *Apps:* abrir, cerrar, borrar datos, "si la app está en primer plano", abrir URL, instalar y desinstalar.
+- *Pantalla/UI:* tocar por texto, por `resource-id` o por **XPath** (uiautomator), "si aparece XPath", "si aparece texto", leer texto, **si hay un color en un punto** y captura de pantalla.
+- *Apps:* abrir (con `am start` y la actividad de inicio de la app, como el launcher), cerrar, borrar datos, "si la app está en primer plano", abrir URL, instalar y desinstalar.
 - *Sistema:* shell con la salida guardada en una variable, despertar y desbloquear con PIN, proxy, proxy asignado, rotar proxy, **modo avión para rotar IP**, Wi-Fi y envío de archivos.
 - *Datos e integraciones:* fila de una tabla CSV, petición HTTP y notificación.
 - Plantillas en el texto: `{variable}`, `{rand:1-100}`, `{pick:hola|buenas}`, `{device.name}`, `{timestamp}`.

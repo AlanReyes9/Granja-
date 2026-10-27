@@ -364,7 +364,7 @@ export async function openDetails(serial) {
     $m('#dReboot').onclick = () => call('reboot', [serial]);
     $m('#dRecovery').onclick = () => call('reboot', [serial], 'recovery');
     const pkg = () => $m('#dApps').value;
-    $m('#dOpen').onclick = () => call('shellCmd', [serial], `monkey -p ${pkg()} -c android.intent.category.LAUNCHER 1`);
+    $m('#dOpen').onclick = () => call('openApp', [serial], pkg());
     $m('#dStop').onclick = () => call('shellCmd', [serial], `am force-stop ${pkg()}`);
     $m('#dUninstall').onclick = async () => { await call('shellCmd', [serial], `pm uninstall ${pkg()}`); toast(`${pkg()} desinstalada`); };
     try {

@@ -1,5 +1,6 @@
 // Acciones de bajo nivel sobre un dispositivo: toques humanizados, texto, UI dump, etc.
 import { shellQuote } from '../devices.js';
+import { queryXpath, bestXpath, absoluteXpath } from './xpath.js';
 
 export const sleep = (ms, signal) => new Promise((resolve, reject) => {
   if (signal?.aborted) return reject(new Error('Detenido'));
@@ -97,21 +98,40 @@ export async function typeText(device, text, humanize, signal) {
 
 const decodeXml = (s) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#10;/g, '\n').replace(/&amp;/g, '&');
 
+/**
+ * Elementos de la pantalla con su árbol: cada uno lleva sus atributos tal cual (attrs), su posición
+ * y el índice de su padre y de sus hijos (para el XPath).
+ */
 export function parseUiDump(xml) {
   const nodes = [];
-  const re = /<node\b([^>]*?)\/?>/g;
+  const stack = [];
+  const re = /<node\b([^>]*?)(\/?)>|<\/node>/g;
   let m;
   while ((m = re.exec(xml))) {
+    if (m[0] === '</node>') { stack.pop(); continue; }
     const attrs = {};
     m[1].replace(/([\w-]+)="([^"]*)"/g, (_, k, v) => { attrs[k] = decodeXml(v); });
-    const b = (attrs.bounds || '').match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-    if (!b) continue;
-    const [x1, y1, x2, y2] = b.slice(1).map(Number);
-    nodes.push({
+    const b = (attrs.bounds || '').match(/\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/);
+    const [x1, y1, x2, y2] = b ? b.slice(1).map(Number) : [0, 0, 0, 0];
+    const parent = stack.length ? stack[stack.length - 1] : null;
+    const node = {
+      index: nodes.length, parent, children: [], attrs,
       text: attrs.text || '', desc: attrs['content-desc'] || '', id: attrs['resource-id'] || '',
       cls: attrs.class || '', clickable: attrs.clickable === 'true',
       bounds: [x1, y1, x2, y2], cx: Math.round((x1 + x2) / 2), cy: Math.round((y1 + y2) / 2),
-    });
+    };
+    nodes.push(node);
+    if (parent != null) nodes[parent].children.push(node.index);
+    if (!m[2]) stack.push(node.index);
+  }
+  return nodes;
+}
+
+/** Añade a cada elemento su XPath corto y su XPath absoluto (para el inspector). */
+export function addXpaths(nodes) {
+  for (const n of nodes) {
+    n.xpath = bestXpath(nodes, n);
+    n.xpathAbs = absoluteXpath(nodes, n);
   }
   return nodes;
 }
@@ -132,7 +152,8 @@ export async function dumpUi(device, signal) {
   throw new Error(`No se pudieron leer los elementos de la pantalla (uiautomator): ${last || 'sin respuesta'}`);
 }
 
-export function findNode(nodes, { text, exact, id }) {
+export function findNode(nodes, { text, exact, id, xpath }) {
+  if (xpath) return queryXpath(nodes, xpath)[0];
   if (id) return nodes.find((n) => n.id === id || n.id.endsWith(`:id/${id}`));
   const needle = String(text).toLowerCase();
   const match = (s) => (exact ? s.toLowerCase() === needle : s.toLowerCase().includes(needle));
@@ -160,6 +181,30 @@ export async function screenState(device) {
     asleep: /mWakefulness=(Asleep|Dozing)|Display Power: state=OFF/i.test(out),
     locked: /(Lockscreen|Keyguard|keyguardShowing)\w*=true/i.test(out),
   };
+}
+
+/**
+ * Abre una app como lo haría el launcher: busca su actividad de inicio y la lanza con "am start".
+ * No se usa "monkey": en varias capas de Android (MIUI, One UI…) se queda colgado mientras el teléfono
+ * sigue conectado y la app no se abre hasta que se corta la conexión.
+ */
+export async function launchApp(device, pkg) {
+  const name = String(pkg || '').trim();
+  if (!/^[A-Za-z][\w]*(\.[A-Za-z0-9_]+)+$/.test(name)) throw new Error(`Paquete no válido: "${name}"`);
+  const resolved = await device.shell(`cmd package resolve-activity --brief -c android.intent.category.LAUNCHER ${name} 2>/dev/null`, { timeout: 10000 }).catch(() => '');
+  const component = resolved.trim().split('\n').pop().trim();
+  if (/^[\w.]+\/[\w.$]+$/.test(component)) {
+    // NEW_TASK | RESET_TASK_IF_NEEDED: si la app ya estaba abierta, la trae al frente como el icono.
+    const out = await device.shell(`am start -n ${component} -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000`, { timeout: 15000 });
+    if (/Error:|Exception/.test(out)) throw new Error(`No se pudo abrir ${name}: ${out.trim().split('\n').pop()}`);
+    return component;
+  }
+  const installed = await device.shell(`pm path ${name}`, { timeout: 10000 }).catch(() => '');
+  if (!installed.includes('package:')) throw new Error(`La app ${name} no está instalada`);
+  // Android antiguos sin "cmd package resolve-activity" (6 o anterior).
+  const out = await device.shell(`monkey -p ${name} -c android.intent.category.LAUNCHER 1 2>&1`, { timeout: 15000 });
+  if (/No activities found|monkey aborted/i.test(out)) throw new Error(`La app ${name} no tiene pantalla de inicio que abrir`);
+  return name;
 }
 
 export async function foregroundPackage(device) {

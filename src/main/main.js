@@ -173,11 +173,15 @@ const handlers = {
   },
   // Inspector: captura + elementos de la pantalla (uiautomator) para construir flujos.
   inspect: async (serial) => {
-    const { dumpUi } = await import('./automation/actions.js');
+    const { dumpUi, addXpaths } = await import('./automation/actions.js');
     const d = devices.get(serial);
     const [shot, nodes, size] = await Promise.all([handlers.screenshot(serial, 720, 85), dumpUi(d), d.getScreenSize()]);
-    return { shot, nodes, size };
+    return { shot, nodes: addXpaths(nodes), size };
   },
+  openApp: (serials, pkg) => forEachSerial(serials, async (d) => {
+    const { launchApp } = await import('./automation/actions.js');
+    return launchApp(d, pkg);
+  }),
   saveScreenshot: async (serial) => {
     const name = (store.get('deviceMeta')[serial]?.name || serial).replace(/[^\w.-]+/g, '_');
     fs.mkdirSync(screenshotsDir, { recursive: true });

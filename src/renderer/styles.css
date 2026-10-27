@@ -394,6 +394,8 @@ table.data .empty-row td { color: var(--muted); text-align: center; padding: 26p
 .inspector .box-el { position: absolute; border: 1px solid rgba(76, 110, 245, .45); cursor: pointer; }
 .inspector .box-el:hover { background: rgba(76, 110, 245, .14); border-color: var(--accent); }
 .inspector .box-el.sel { background: rgba(76, 110, 245, .22); border: 2px solid var(--accent); }
+.inspector .box-el.match { background: rgba(18, 184, 134, .22); border: 2px solid #12b886; }
+.inspector .box-el.tmp { pointer-events: none; }
 .inspector .props { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .inspector .el-list { max-height: 30vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .inspector .el-list div { padding: 5px 10px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -44,9 +44,9 @@ function decorateNodes() {
 // Prefijo para que el tipo de nodo no choque con clases CSS de la interfaz (log, stop, view...).
 const nodeClass = (type) => `n-${type}`;
 
-function addNode(type, x, y) {
+function addNode(type, x, y, params = {}) {
   const def = NODE_MAP[type];
-  const data = defaultParams(type);
+  const data = { ...defaultParams(type), ...params };
   const id = editor.addNode(type, def.inputs ?? 1, def.outputs.length, x, y, nodeClass(type), data, nodeHtml(type, data));
   decorateNodes();
   return id;
@@ -67,7 +67,7 @@ let lastAddedId = null;
  * Añade un nodo desde la paleta (doble clic). Va a continuación del nodo seleccionado o del último
  * añadido, a su derecha y ya conectado, para poder montar un flujo seguido sin solapar nodos.
  */
-function addNodeChained(type) {
+function addNodeChained(type, params) {
   const data = editor.drawflow.drawflow.Home.data;
   const selId = editor.node_selected?.id?.replace('node-', '');
   const anchorId = [selId, lastAddedId].find((id) => id && data[id]);
@@ -85,7 +85,7 @@ function addNodeChained(type) {
   // Si el hueco está ocupado, se baja hasta encontrar sitio libre.
   const taken = (px, py) => Object.values(data).some((n) => Math.abs(n.pos_x - px) < 200 && Math.abs(n.pos_y - py) < 120);
   while (taken(x, y)) y += 140;
-  const id = addNode(type, x, y);
+  const id = addNode(type, x, y, params);
   const anchorOuts = anchor ? Object.keys(anchor.outputs || {}) : [];
   if (anchor && anchorOuts.length && (NODE_MAP[type].inputs ?? 1) > 0) {
     // Se usa la primera salida libre del nodo anterior (p. ej. "sí" y luego "no").
@@ -103,6 +103,16 @@ function addNodeChained(type) {
     editor.canvas_y -= Math.max(0, r.bottom - box.bottom + 80) - Math.max(0, box.top - r.top + 80);
     editor.precanvas.style.transform = `translate(${editor.canvas_x}px, ${editor.canvas_y}px) scale(${editor.zoom})`;
   }
+}
+
+/**
+ * Añade un nodo ya rellenado al flujo abierto (desde el inspector), a continuación del seleccionado.
+ * Devuelve el nombre del flujo, o null si no hay ninguno abierto.
+ */
+export function addNodeToCurrent(type, params) {
+  if (!editor || !current) return null;
+  addNodeChained(type, params);
+  return $('#wfName')?.value || current.name || 'flujo';
 }
 
 function emptyGraph() {

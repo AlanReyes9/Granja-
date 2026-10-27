@@ -10,8 +10,8 @@ const UI = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy r
 <node text="Contraseña" resource-id="app:id/pass" bounds="[100,1300][980,1400]"/></hierarchy>`;
 
 class RealisticPhone {
-  constructor({ locked = false, asleep = false, uiFailures = 0 } = {}) {
-    Object.assign(this, { locked, asleep, uiFailures, cmds: [] });
+  constructor({ locked = false, asleep = false, uiFailures = 0, oldAndroid = false } = {}) {
+    Object.assign(this, { locked, asleep, uiFailures, oldAndroid, cmds: [] });
   }
   async getScreenSize() { return { width: 1080, height: 2340 }; }
   async shell(cmd) {
@@ -25,6 +25,9 @@ class RealisticPhone {
       if (this.uiFailures-- > 0) return 'ERROR: could not get idle state.';
       return `UI hierchary dumped to: /sdcard/granja_ui.xml\n${UI}`;
     }
+    const resolve = cmd.match(/^cmd package resolve-activity --brief -c android.intent.category.LAUNCHER ([\w.]+)/);
+    if (resolve) return resolve[1] === 'com.noexiste' || this.oldAndroid ? 'No activity found' : `priority=0 preferredOrder=0\n${resolve[1]}/.MainActivity`;
+    if (cmd.startsWith('pm path')) return cmd.includes('com.noexiste') ? '' : 'package:/data/app/base.apk';
     if (cmd.startsWith('monkey -p com.noexiste')) return '** No activities found to run, monkey aborted.';
     if (cmd.startsWith('pm install') || cmd.includes('ipify')) return '203.0.113.7';
     if (cmd.includes('dumpsys battery | grep level')) return '12';
@@ -124,6 +127,22 @@ test('errores claros: app no instalada e Inicio sin conectar', async () => {
   assert.equal(res.status, 'error');
   assert.ok(res.logs.some((l) => l.message.includes('Error en "Abrir app"') && l.message.includes('no está instalada')));
   assert.throws(() => engine.start({ name: 'x', graph: buildGraph([{ type: 'start', x: 0, y: 0 }, { type: 'tap', x: 0, y: 0 }], []) }, ['S1']), /no está conectado/);
+});
+
+test('abrir app: usa am start con la actividad de inicio, no monkey (salvo en Android antiguo)', async () => {
+  const graph = buildGraph([{ type: 'start', x: 0, y: 0 }, { type: 'open_app', params: { package: 'com.instagram.android' }, x: 0, y: 0 }], [[0, 0, 1]]);
+  const phone = new RealisticPhone();
+  const res = await run(engineFor(phone).engine, graph);
+  assert.equal(res.status, 'ok');
+  assert.ok(phone.cmds.includes('am start -n com.instagram.android/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000'));
+  assert.ok(!phone.cmds.some((c) => c.startsWith('monkey')));
+
+  const old = new RealisticPhone({ oldAndroid: true });
+  assert.equal((await run(engineFor(old).engine, graph)).status, 'ok');
+  assert.ok(old.cmds.some((c) => c.startsWith('monkey -p com.instagram.android')));
+
+  const bad = await run(engineFor(new RealisticPhone()).engine, buildGraph([{ type: 'start', x: 0, y: 0 }, { type: 'open_app', params: { package: 'com.x; reboot' }, x: 0, y: 0 }], [[0, 0, 1]]));
+  assert.equal(bad.status, 'error');
 });
 
 test('el registro muestra cada paso', async () => {
