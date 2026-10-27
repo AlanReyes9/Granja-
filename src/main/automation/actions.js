@@ -141,15 +141,19 @@ export function addXpaths(nodes) {
  * ("could not get idle state"), así que se reintenta antes de dar error: devolver una lista vacía
  * haría que "Tocar texto" siguiera por "no encontrado" sin avisar del problema real.
  */
-export async function dumpUi(device, signal) {
+export async function dumpUiXml(device, signal) {
   let last = '';
   for (let attempt = 0; attempt < 3; attempt++) {
     const out = await device.shell('rm -f /sdcard/granja_ui.xml; uiautomator dump /sdcard/granja_ui.xml 2>&1; cat /sdcard/granja_ui.xml 2>/dev/null', { timeout: 25000 });
-    if (out.includes('<hierarchy')) return parseUiDump(out.slice(out.indexOf('<?xml') >= 0 ? out.indexOf('<?xml') : out.indexOf('<hierarchy')));
+    if (out.includes('<hierarchy')) return out.slice(out.indexOf('<?xml') >= 0 ? out.indexOf('<?xml') : out.indexOf('<hierarchy'));
     last = out.trim().split('\n')[0];
     await sleep(600, signal);
   }
   throw new Error(`No se pudieron leer los elementos de la pantalla (uiautomator): ${last || 'sin respuesta'}`);
+}
+
+export async function dumpUi(device, signal) {
+  return parseUiDump(await dumpUiXml(device, signal));
 }
 
 export function findNode(nodes, { text, exact, id, xpath, vars }) {

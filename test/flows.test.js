@@ -359,6 +359,18 @@ test('YouTube: sin buscador abre el canal por enlace y para si se acaba la lista
   assert.match(phone.viaLink, /youtube\.com\/@otro\/videos/);
   assert.deepEqual(phone.watched.map((w) => w.i), [0, 1]);
   const msgs = res.logs.map((l) => l.message).join('\n');
-  assert.match(msgs, /no hay más vídeos/);
+  assert.match(msgs, /no se encontró el siguiente vídeo/);
   assert.match(msgs, /2 vídeos vistos de @otro/);
+});
+
+test('YouTube: funciona con un XPath absoluto copiado del Inspector en xp_video', async () => {
+  const phone = new YouTubePhone({ durations: [40, 40, 40] });
+  const { engine } = engineFor(phone);
+  const graph = youtubeFlow(phone, { videos: 3 });
+  for (const n of Object.values(graph.drawflow.Home.data)) {
+    if (n.name === 'set_var' && n.data.name === 'xp_video') n.data.value = '/hierarchy/android.widget.FrameLayout/androidx.recyclerview.widget.RecyclerView/android.view.ViewGroup[1]';
+  }
+  const res = await run(engine, graph);
+  assert.equal(res.status, 'ok', res.logs.filter((l) => l.level === 'error').map((l) => l.message).join(' | '));
+  assert.deepEqual(phone.watched.map((w) => w.i), [0, 1, 2]);
 });

@@ -173,10 +173,19 @@ const handlers = {
   },
   // Inspector: captura + elementos de la pantalla (uiautomator) para construir flujos.
   inspect: async (serial) => {
-    const { dumpUi, addXpaths } = await import('./automation/actions.js');
+    const { dumpUiXml, parseUiDump, addXpaths } = await import('./automation/actions.js');
     const d = devices.get(serial);
-    const [shot, nodes, size] = await Promise.all([handlers.screenshot(serial, 720, 85), dumpUi(d), d.getScreenSize()]);
-    return { shot, nodes: addXpaths(nodes), size };
+    const [shot, xml, size] = await Promise.all([handlers.screenshot(serial, 720, 85), dumpUiXml(d), d.getScreenSize()]);
+    return { shot, xml, nodes: addXpaths(parseUiDump(xml)), size };
+  },
+  // Guarda el volcado de la pantalla (XML de uiautomator) para poder revisar sus XPath fuera de la app.
+  saveUiXml: (serial, xml) => {
+    const name = (store.get('deviceMeta')[serial]?.name || serial).replace(/[^\w.-]+/g, '_');
+    fs.mkdirSync(screenshotsDir, { recursive: true });
+    const file = path.join(screenshotsDir, `${name}_pantalla_${Date.now()}.xml`);
+    fs.writeFileSync(file, String(xml));
+    shell.showItemInFolder(file);
+    return file;
   },
   openApp: (serials, pkg) => forEachSerial(serials, async (d) => {
     const { launchApp } = await import('./automation/actions.js');

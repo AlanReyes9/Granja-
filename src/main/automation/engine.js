@@ -264,7 +264,8 @@ export class Engine extends EventEmitter {
         return found ? 0 : 1;
       }
       case 'read_text': {
-        const found = A.findNode(await A.dumpUi(device, signal), p.xpath ? { xpath: p.xpath, vars } : { id: p.id });
+        // Breve espera tolerante: con vídeos en pantalla uiautomator falla a ratos.
+        const found = await A.waitForNode(device, p.xpath ? { xpath: p.xpath, vars } : { id: p.id }, num(p.timeout, 2000), signal);
         if (!found) return 1;
         vars[p.var || 'texto'] = found.text || found.desc;
         return 0;

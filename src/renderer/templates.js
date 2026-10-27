@@ -146,77 +146,86 @@ export const TEMPLATES = [
   },
   {
     name: 'YouTube: ver vídeos de un canal',
-    description: 'Busca el canal de la variable "canal" (su @usuario), abre su pestaña de vídeos y los reproduce uno tras otro. Cada vídeo se ve completo o hasta "max_seg" segundos. Edita "canal", "videos" y "max_seg" en los primeros nodos.',
+    description: 'Busca el canal de la variable "canal" (su @usuario), abre su pestaña Vídeos y los reproduce uno tras otro, cada uno completo o hasta "max_seg" segundos. Los XPath están en variables al principio: si en tu teléfono no encuentra algo, copia del Inspector el XPath (absoluto o corto) y pégalo en la variable xp_… correspondiente.',
     build: () => {
-      const VID = 'contains(@content-desc,"reproducciones") or contains(@content-desc,"visualizaciones") or contains(@content-desc,"views")';
+      // Cómo reconoce YouTube en español un vídeo de la lista (su descripción accesible).
+      const VID = 'contains(@content-desc,"visualizaciones") or contains(@content-desc,"reproducciones") or contains(@content-desc," vistas") '
+        + 'or contains(@content-desc,"minutos") or contains(@content-desc,"segundos") or contains(@content-desc,"views")';
       const nextVideo = `(//*[@content-desc=$ultimo or @text=$ultimo]/following::*[${VID}])[1]`;
-      const firstVideo = `(//*[${VID}])[1]`;
-      // Estado de YouTube en la sesión multimedia de Android: sigue reproduciendo el mismo vídeo o no.
       const yt = "dumpsys media_session | grep -A 30 'package=com.google.android.youtube'";
       const capture = `${yt} | grep -m1 'description=' > /sdcard/nxf_yt.txt`;
       const check = `d=$(${yt}); s=$(echo "$d" | grep -m1 -o 'state=[0-9][0-9]*'); t=$(echo "$d" | grep -m1 'description='); `
         + 'case "$s" in \'\'|state=3|state=6|state=8) if [ "$t" = "$(cat /sdcard/nxf_yt.txt 2>/dev/null)" ]; then echo sigue; else echo fin; fi;; *) echo fin;; esac';
-      const nodes = [
-        /* 0 */ { type: 'start' },
-        /* 1 */ { type: 'set_var', params: { name: 'canal', value: '@MrBeast' } },
-        /* 2 */ { type: 'set_var', params: { name: 'videos', value: '20' } },
-        /* 3 */ { type: 'set_var', params: { name: 'max_seg', value: '600' } },
-        /* 4 */ { type: 'set_var', params: { name: 'vistos', value: '0' } },
-        /* 5 */ { type: 'open_app', params: { package: 'com.google.android.youtube' } },
-        /* 6 */ { type: 'random_wait', params: { min: 4000, max: 6000 } },
-        // Buscar el canal.
-        /* 7 */ { type: 'tap_xpath', params: { xpath: '//*[@content-desc="Buscar" or @content-desc="Search" or @content-desc="Buscar en YouTube" or @content-desc="Search YouTube"]', timeout: 8000 } },
-        /* 8 */ { type: 'random_wait', params: { min: 800, max: 1500 } },
-        /* 9 */ { type: 'type_text', params: { text: '{canal}', humanize: true } },
-        /* 10 */ { type: 'key', params: { key: 'ENTER' } },
-        /* 11 */ { type: 'random_wait', params: { min: 3000, max: 5000 } },
-        /* 12 */ { type: 'tap_xpath', params: { xpath: '(//*[contains(@content-desc,$canal) and (contains(@content-desc,"suscriptor") or contains(@content-desc,"subscriber"))])[1]', timeout: 8000 } },
-        /* 13 */ { type: 'random_wait', params: { min: 2500, max: 4000 } },
-        /* 14 */ { type: 'tap_xpath', params: { xpath: '//*[@text="Vídeos" or @text="Videos" or @content-desc="Vídeos" or @content-desc="Videos"]', timeout: 6000 } },
-        // Si la búsqueda falla, se abre la pestaña de vídeos del canal con su enlace.
-        /* 15 */ { type: 'shell', params: { command: "am start -a android.intent.action.VIEW -d 'https://www.youtube.com/{canal}/videos' -p com.google.android.youtube", var: '' } },
-        /* 16 */ { type: 'random_wait', params: { min: 3000, max: 5000 } },
-        /* 17 */ { type: 'set_var', params: { name: 'ultimo', value: '' } },
-        // Bucle de vídeos: el siguiente al último visto (o el primero de la lista).
-        /* 18 */ { type: 'loop', params: { times: '{videos}' } },
-        /* 19 */ { type: 'if_var', params: { name: 'ultimo', op: '==', value: '' } },
-        /* 20 */ { type: 'swipe', params: { x1: '50%', y1: '72%', x2: '50%', y2: '45%', ms: 700, humanize: false } },
-        /* 21 */ { type: 'random_wait', params: { min: 1200, max: 2200 } },
-        /* 22 */ { type: 'read_text', params: { xpath: nextVideo, var: 'actual' } },
-        /* 23 */ { type: 'read_text', params: { xpath: firstVideo, var: 'actual' } },
-        /* 24 */ { type: 'tap_xpath', params: { xpath: firstVideo, timeout: 3000 } },
-        /* 25 */ { type: 'tap_xpath', params: { xpath: nextVideo, timeout: 3000 } },
-        /* 26 */ { type: 'set_var', params: { name: 'ultimo', value: '{actual}' } },
-        // Ver el vídeo: cada ~30 s se comprueba si sigue el mismo; como mucho "max_seg" segundos.
-        /* 27 */ { type: 'random_wait', params: { min: 8000, max: 11000 } },
-        /* 28 */ { type: 'shell', params: { command: capture, var: '' } },
-        /* 29 */ { type: 'set_var', params: { name: 'visto', value: '0' } },
-        /* 30 */ { type: 'random_wait', params: { min: 25000, max: 35000 } },
-        /* 31 */ { type: 'math_var', params: { name: 'visto', op: '+', value: '30' } },
-        /* 32 */ { type: 'shell', params: { command: check, var: 'estado' } },
-        /* 33 */ { type: 'if_var', params: { name: 'estado', op: '==', value: 'fin' } },
-        /* 34 */ { type: 'if_var', params: { name: 'visto', op: '>=', value: '{max_seg}' } },
-        /* 35 */ { type: 'shell', params: { command: 'input keyevent 127', var: '' } },
-        /* 36 */ { type: 'math_var', params: { name: 'vistos', op: '+', value: '1' } },
-        /* 37 */ { type: 'log', params: { message: '{device.name}: vídeo {vistos} visto (~{visto} s)' } },
-        /* 38 */ { type: 'key', params: { key: 'BACK' } },
-        /* 39 */ { type: 'random_wait', params: { min: 2000, max: 3500 } },
-        /* 40 */ { type: 'log', params: { message: '{device.name}: no hay más vídeos en la lista de {canal}' } },
-        /* 41 */ { type: 'log', params: { message: '{device.name}: {vistos} vídeos vistos de {canal}' } },
-        /* 42 */ { type: 'key', params: { key: 'HOME' } },
-        // ¿Sigue en pantalla el último visto sin nada detrás? Entonces se acabó la lista.
-        /* 43 */ { type: 'if_xpath', params: { xpath: '//*[@content-desc=$ultimo or @text=$ultimo]', timeout: 1000 } },
-      ].map((n, i) => ({ ...n, x: (i % 7) * 215, y: Math.floor(i / 7) * 280 }));
-      return buildGraph(nodes, [
-        [0, 0, 1], [1, 0, 2], [2, 0, 3], [3, 0, 4], [4, 0, 5], [5, 0, 6], [6, 0, 7],
-        [7, 0, 8], [7, 1, 15], [8, 0, 9], [9, 0, 10], [10, 0, 11], [11, 0, 12],
-        [12, 0, 13], [12, 1, 15], [13, 0, 14], [14, 0, 16], [14, 1, 15], [15, 0, 16], [16, 0, 17], [17, 0, 18],
-        [18, 0, 19], [18, 1, 41], [19, 0, 23], [19, 1, 20], [20, 0, 21], [21, 0, 22],
-        [22, 0, 25], [22, 1, 43], [43, 0, 40], [43, 1, 23], [23, 0, 24], [23, 1, 40], [24, 0, 26], [24, 1, 40], [25, 0, 26], [25, 1, 23],
-        [26, 0, 27], [27, 0, 28], [28, 0, 29], [29, 0, 30], [30, 0, 31], [31, 0, 32], [32, 0, 33],
-        [33, 0, 35], [33, 1, 34], [34, 0, 35], [34, 1, 30],
-        [35, 0, 36], [36, 0, 37], [37, 0, 38], [38, 0, 39], [39, 0, 18],
-        [40, 0, 41], [41, 0, 42],
+      const N = {};
+      const nodes = [];
+      const add = (key, type, params = {}) => { N[key] = nodes.length; nodes.push({ type, params }); };
+      add('start', 'start');
+      // Ajustes del flujo.
+      add('canal', 'set_var', { name: 'canal', value: '@MrBeast' });
+      add('videos', 'set_var', { name: 'videos', value: '20' });
+      add('maxSeg', 'set_var', { name: 'max_seg', value: '600' });
+      add('xpBuscar', 'set_var', { name: 'xp_buscar', value: '//*[@content-desc="Buscar" or @content-desc="Buscar en YouTube" or @resource-id="com.google.android.youtube:id/menu_item_1"]' });
+      add('xpCanal', 'set_var', { name: 'xp_canal', value: '(//*[contains(@content-desc,"suscriptores") and contains(@content-desc,$canal)])[1]' });
+      add('xpPestana', 'set_var', { name: 'xp_pestana_videos', value: '//*[@text="Vídeos" or @content-desc="Vídeos" or @text="Videos" or @content-desc="Videos"]' });
+      add('xpVideo', 'set_var', { name: 'xp_video', value: `(//*[${VID}])[1]` });
+      add('vistos', 'set_var', { name: 'vistos', value: '0' });
+      add('open', 'open_app', { package: 'com.google.android.youtube' });
+      add('w0', 'random_wait', { min: 4000, max: 6000 });
+      // Buscar el canal; si algo falla, se abre su pestaña de vídeos por enlace.
+      add('tapBuscar', 'tap_xpath', { xpath: '{xp_buscar}', timeout: 8000 });
+      add('w1', 'random_wait', { min: 800, max: 1500 });
+      add('escribir', 'type_text', { text: '{canal}', humanize: true });
+      add('enter', 'key', { key: 'ENTER' });
+      add('w2', 'random_wait', { min: 3000, max: 5000 });
+      add('tapCanal', 'tap_xpath', { xpath: '{xp_canal}', timeout: 8000 });
+      add('w3', 'random_wait', { min: 2500, max: 4000 });
+      add('tapPestana', 'tap_xpath', { xpath: '{xp_pestana_videos}', timeout: 6000 });
+      add('enlace', 'shell', { command: "am start -a android.intent.action.VIEW -d 'https://www.youtube.com/{canal}/videos' -p com.google.android.youtube", var: '' });
+      add('w4', 'random_wait', { min: 3000, max: 5000 });
+      add('ultimo0', 'set_var', { name: 'ultimo', value: '' });
+      // Un vídeo por vuelta: el siguiente al último visto, o el de xp_video la primera vez.
+      add('loop', 'loop', { times: '{videos}' });
+      add('primero', 'if_var', { name: 'ultimo', op: '==', value: '' });
+      add('bajar', 'swipe', { x1: '50%', y1: '72%', x2: '50%', y2: '45%', ms: 700, humanize: false });
+      add('w5', 'random_wait', { min: 1200, max: 2200 });
+      add('leerSig', 'read_text', { xpath: nextVideo, var: 'actual', timeout: 2000 });
+      add('ultimoVisible', 'if_xpath', { xpath: '//*[@content-desc=$ultimo or @text=$ultimo]', timeout: 1000 });
+      add('leerPrimero', 'read_text', { xpath: '{xp_video}', var: 'actual', timeout: 6000 });
+      add('tapPrimero', 'tap_xpath', { xpath: '{xp_video}', timeout: 3000 });
+      add('tapSig', 'tap_xpath', { xpath: nextVideo, timeout: 3000 });
+      add('guardar', 'set_var', { name: 'ultimo', value: '{actual}' });
+      add('log0', 'log', { message: '{device.name}: reproduciendo {actual}' });
+      // Ver el vídeo: cada ~30 s se mira si YouTube sigue con el mismo; como mucho max_seg segundos.
+      add('w6', 'random_wait', { min: 8000, max: 11000 });
+      add('captura', 'shell', { command: capture, var: '' });
+      add('visto0', 'set_var', { name: 'visto', value: '0' });
+      add('w7', 'random_wait', { min: 25000, max: 35000 });
+      add('sumar', 'math_var', { name: 'visto', op: '+', value: '30' });
+      add('comprobar', 'shell', { command: check, var: 'estado' });
+      add('terminado', 'if_var', { name: 'estado', op: '==', value: 'fin' });
+      add('tope', 'if_var', { name: 'visto', op: '>=', value: '{max_seg}' });
+      add('pausa', 'shell', { command: 'input keyevent 127', var: '' });
+      add('contar', 'math_var', { name: 'vistos', op: '+', value: '1' });
+      add('log1', 'log', { message: '{device.name}: vídeo {vistos} visto (~{visto} s)' });
+      add('atras', 'key', { key: 'BACK' });
+      add('w8', 'random_wait', { min: 2000, max: 3500 });
+      add('sinMas', 'log', { message: '{device.name}: no se encontró el siguiente vídeo en la lista de {canal}' });
+      add('fin', 'log', { message: '{device.name}: {vistos} vídeos vistos de {canal}' });
+      add('inicio', 'key', { key: 'HOME' });
+      const L = (a, out, b) => [N[a], out, N[b]];
+      const chain = (...keys) => keys.slice(1).map((k, i) => L(keys[i], 0, k));
+      return buildGraph(nodes.map((n, i) => ({ ...n, x: (i % 7) * 215, y: Math.floor(i / 7) * 280 })), [
+        ...chain('start', 'canal', 'videos', 'maxSeg', 'xpBuscar', 'xpCanal', 'xpPestana', 'xpVideo', 'vistos', 'open', 'w0', 'tapBuscar', 'w1', 'escribir', 'enter', 'w2', 'tapCanal', 'w3', 'tapPestana', 'w4', 'ultimo0', 'loop'),
+        L('tapBuscar', 1, 'enlace'), L('tapCanal', 1, 'enlace'), L('tapPestana', 1, 'enlace'), L('enlace', 0, 'w4'),
+        L('loop', 0, 'primero'), L('loop', 1, 'fin'),
+        L('primero', 0, 'leerPrimero'), L('primero', 1, 'bajar'), ...chain('bajar', 'w5', 'leerSig'),
+        L('leerSig', 0, 'tapSig'), L('leerSig', 1, 'ultimoVisible'), L('ultimoVisible', 0, 'sinMas'), L('ultimoVisible', 1, 'leerPrimero'),
+        L('leerPrimero', 0, 'tapPrimero'), L('leerPrimero', 1, 'sinMas'), L('tapPrimero', 0, 'guardar'), L('tapPrimero', 1, 'sinMas'),
+        L('tapSig', 0, 'guardar'), L('tapSig', 1, 'leerPrimero'),
+        ...chain('guardar', 'log0', 'w6', 'captura', 'visto0', 'w7', 'sumar', 'comprobar', 'terminado'),
+        L('terminado', 0, 'pausa'), L('terminado', 1, 'tope'), L('tope', 0, 'pausa'), L('tope', 1, 'w7'),
+        ...chain('pausa', 'contar', 'log1', 'atras', 'w8', 'loop'),
+        L('sinMas', 0, 'fin'), L('fin', 0, 'inicio'),
       ]);
     },
   },

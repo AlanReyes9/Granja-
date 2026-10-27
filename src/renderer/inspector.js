@@ -10,7 +10,8 @@ export async function openInspector(serial) {
   if (!ready.length) return toast('No hay dispositivos listos para inspeccionar', 'warn');
   serial = serial || selectedSerials()[0] || ready[0].serial;
   const html = `<div class="inline-row"><select id="insDevice">${ready.map((d) => `<option value="${esc(d.serial)}" ${d.serial === serial ? 'selected' : ''}>${esc(deviceName(d.serial))}</option>`).join('')}</select>
-      <button id="insRefresh" class="primary">${icon('refresh', 15)}Capturar</button></div>
+      <button id="insRefresh" class="primary">${icon('refresh', 15)}Capturar</button>
+      <button id="insXml" title="Guarda los elementos de esta pantalla en un archivo .xml">${icon('download', 15)}Guardar XML</button></div>
     <div class="inspector">
       <div class="screen"><img alt="" /><div class="msg">Capturando…</div><div class="layer"></div></div>
       <div class="props">
@@ -138,6 +139,10 @@ export async function openInspector(serial) {
     el.querySelector('#insXpathTest').onclick = testXpath;
     el.querySelector('#insXpath').onkeydown = (e) => { if (e.key === 'Enter') testXpath(); };
     el.querySelector('#insRefresh').onclick = load;
+    el.querySelector('#insXml').onclick = async () => {
+      if (!data?.xml) return toast('Captura primero la pantalla', 'warn');
+      toast(`Pantalla guardada en ${await call('saveUiXml', serial, data.xml)}`);
+    };
     el.querySelector('#insDevice').onchange = load;
     el.querySelector('#insFilter').oninput = renderList;
     load();

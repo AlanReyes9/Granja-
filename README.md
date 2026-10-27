@@ -47,7 +47,7 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - El menú lateral (Ctrl+B) y el panel del Centro de control se pueden contraer; la app recuerda cómo los dejaste.
 - Panel lateral con deslizadores de vista grande, miniaturas, calidad y fotogramas por segundo, filtro USB / Wi-Fi / OTG y lista de grupos con contadores (seleccionados / total).
 - Cada teléfono lleva su número, su barra de navegación Android (atrás, inicio, recientes), su conexión, su batería y su proxy o grupo.
-- **Inspector**: muestra los elementos de la pantalla de un teléfono (texto, resource-id, **XPath** corto y absoluto, posición en %) para saber qué poner en los nodos *Tocar texto*, *Tocar por resource-id*, *Tocar por XPath* o *Tocar*. Permite probar un XPath sobre la captura (marca los elementos que lo cumplen) y añadir el nodo *Tocar por XPath* al flujo abierto con un clic.
+- **Inspector**: muestra los elementos de la pantalla de un teléfono (texto, resource-id, **XPath** corto y absoluto, posición en %) para saber qué poner en los nodos *Tocar texto*, *Tocar por resource-id*, *Tocar por XPath* o *Tocar*. Permite probar un XPath sobre la captura (marca los elementos que lo cumplen), guardar la pantalla como XML y añadir el nodo *Tocar por XPath* al flujo abierto con un clic.
 - **Monitor de tareas**: acceso directo a las ejecuciones en curso.
 
 **Control de la granja**
