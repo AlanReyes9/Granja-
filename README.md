@@ -100,6 +100,17 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - Escaneo de la red, emparejamiento inalámbrico y USB→Wi-Fi automático.
 - Registro en vivo con filtros e **historial exportable a CSV**.
 
+## Pruebas de apps con IA
+
+Para probar **tus propias apps** antes de publicarlas en Play Store. En **Pruebas con IA** eliges los teléfonos, la app (paquete) y escribes qué debe probar, por ejemplo: *"regístrate con una cuenta nueva, completa el perfil y llega al pago sin pagar"*.
+
+- Claude (modelo Claude Opus 5.5) ve cada pantalla: la captura y la lista de elementos. Decide qué tocar, escribir o deslizar, y comprueba el resultado de cada acción.
+- Detecta **cierres inesperados y ANR** leyendo `logcat`, vuelve a abrir la app y sigue.
+- Reporta cada fallo con su gravedad, los pasos para reproducirlo y lo esperado frente a lo obtenido. Termina con una conclusión.
+- El **informe** recoge cada paso con su captura y se exporta a un HTML autocontenido para compartirlo.
+- Se pueden lanzar varias pruebas a la vez, una por teléfono.
+- Necesita una clave de la API de Claude (console.anthropic.com), que se guarda cifrada en el equipo. Cada paso envía una captura, así que el coste depende del número de pasos (límite configurable). La API retira sola las capturas antiguas del contexto para que el coste no crezca sin control.
+
 ## Licencias
 
 La app necesita un **serial** para funcionar:

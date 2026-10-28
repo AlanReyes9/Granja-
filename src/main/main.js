@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, nativeImage, shell, safeStorage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -16,6 +16,8 @@ import { parseCsv, toCsv } from './csv.js';
 import { ProxyManager } from './proxies.js';
 import { LicenseManager } from './licensing/license.js';
 import { ScreenStreamer } from './stream.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { AiTestRun, AI_MODEL, reportHtml } from './ai/tester.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -115,6 +117,15 @@ function alert(message) {
   toast(message, 'warn');
   notifier.send(message).catch(() => {});
 }
+
+// Pruebas con IA en curso y la clave de la API de Claude (cifrada; si no hay, la de ANTHROPIC_API_KEY).
+const aiRuns = new Map();
+const aiStoredKey = () => {
+  const k = store.get('aiKey');
+  if (!k) return '';
+  try { return k.enc ? safeStorage.decryptString(Buffer.from(k.enc, 'base64')) : k.plain || ''; } catch { return ''; }
+};
+const aiKey = () => aiStoredKey() || process.env.ANTHROPIC_API_KEY || '';
 
 // Vídeo en tiempo real: los paquetes H.264 van por un canal propio (sin pasar por el de eventos).
 const streamer = new ScreenStreamer({ adb });
@@ -241,6 +252,69 @@ const handlers = {
   openUrl: (serials, url) => forEachSerial(serials, (d) => d.shell(`am start -a android.intent.action.VIEW -d '${url.replace(/'/g, '')}'`)),
   reboot: (serials, mode) => forEachSerial(serials, (d) => d.reboot(mode)),
   setProxy: (serials, proxy) => forEachSerial(serials, (d) => d.shell(`settings put global http_proxy ${proxy || ':0'}`)),
+  // ---------- Pruebas de apps con IA (Claude) ----------
+  aiKeyStatus: () => ({ configured: !!aiKey(), fromEnv: !aiStoredKey() && !!process.env.ANTHROPIC_API_KEY, model: AI_MODEL }),
+  aiSetKey: (key) => {
+    key = String(key || '').trim();
+    if (!key) store.set('aiKey', null);
+    // La clave se guarda cifrada con el almacén seguro del sistema (DPAPI en Windows).
+    else store.set('aiKey', safeStorage.isEncryptionAvailable() ? { enc: safeStorage.encryptString(key).toString('base64') } : { plain: key });
+    return handlers.aiKeyStatus();
+  },
+  aiTestStart: ({ serials, pkg, goal, maxSteps = 30, clearData = false, effort = 'medium' }) => {
+    const key = aiKey();
+    if (!key) throw new Error('Configura primero la clave de la API de Claude');
+    if (!/^[A-Za-z][\w]*(\.[A-Za-z0-9_]+)+$/.test(String(pkg || ''))) throw new Error('Elige la app (paquete) que quieres probar');
+    if (!String(goal || '').trim()) throw new Error('Describe qué debe probar la IA');
+    const client = new Anthropic({ apiKey: key });
+    const ids = [];
+    for (const serial of serials) {
+      const device = devices.get(serial);
+      if (!device || device.state !== 'device') continue;
+      const id = `ai${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const outDir = path.join(screenshotsDir, 'Pruebas IA', `${pkg.replace(/[^\w.-]+/g, '_')}_${id}`);
+      const run = new AiTestRun({ id, serial, device, client, pkg, goal, maxSteps: Math.min(100, Math.max(3, Number(maxSteps) || 30)), clearData, outDir,
+        effort: ['low', 'medium', 'high'].includes(effort) ? effort : 'medium',
+        screenshot: async (s) => { const shot = await handlers.screenshot(s, 720, 75); return { base64: shot.data.split(',')[1], width: shot.width, height: shot.height }; } });
+      aiRuns.set(id, run);
+      const send = (kind, payload) => emit('aiTest', { id, serial, kind, payload, report: kind === 'done' ? payload : undefined });
+      run.on('log', (l) => send('log', l));
+      run.on('step', (st) => send('step', st));
+      run.on('bug', (b) => send('bug', b));
+      run.on('done', (r) => {
+        const list = [r, ...(store.get('aiTests') || []).filter((x) => x.id !== r.id)].slice(0, 50);
+        store.set('aiTests', list);
+        aiRuns.delete(id);
+        send('done', r);
+      });
+      run.run();
+      ids.push(id);
+    }
+    if (!ids.length) throw new Error('Selecciona al menos un teléfono conectado');
+    return ids;
+  },
+  aiTestStop: (id) => aiRuns.get(id)?.stop(),
+  aiTests: () => [...[...aiRuns.values()].map((r) => r.report()), ...(store.get('aiTests') || [])],
+  aiTestShot: (file) => {
+    // Solo capturas de las pruebas con IA.
+    const root = path.join(screenshotsDir, 'Pruebas IA');
+    const full = path.resolve(String(file || ''));
+    if (!full.startsWith(root + path.sep) || !fs.existsSync(full)) return null;
+    return `data:image/jpeg;base64,${fs.readFileSync(full).toString('base64')}`;
+  },
+  aiTestExport: async (id) => {
+    const r = (store.get('aiTests') || []).find((x) => x.id === id) || aiRuns.get(id)?.report();
+    if (!r) throw new Error('No se encontró la prueba');
+    const res = await dialog.showSaveDialog(win, { defaultPath: `Prueba ${r.pkg} ${new Date(r.startedAt).toISOString().slice(0, 10)}.html`, filters: [{ name: 'Informe HTML', extensions: ['html'] }] });
+    if (res.canceled) return null;
+    fs.writeFileSync(res.filePath, reportHtml(r));
+    shell.openPath(res.filePath);
+    return res.filePath;
+  },
+  aiTestDelete: (id) => {
+    store.set('aiTests', (store.get('aiTests') || []).filter((x) => x.id !== id));
+    return true;
+  },
   listPackages: async (serial) => (await devices.get(serial).shell('pm list packages -3')).split('\n').map((l) => l.replace('package:', '').trim()).filter(Boolean).sort(),
   connectWifi: (addr) => devices.connectWifi(addr),
   pair: async (addr, code) => (await adb.pair(addr, code)).trim(),
@@ -484,6 +558,7 @@ app.whenReady().then(async () => {
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
+  for (const r of aiRuns.values()) r.stop();
   engine.stopAll();
   streamer.stopAll();
   devices.stop();

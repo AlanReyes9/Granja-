@@ -22,6 +22,7 @@
       <button data-view="runs"><i data-icon="activity"></i><span>Ejecuciones</span><em id="navRunCount"></em></button>
       <button data-view="proxies"><i data-icon="shield"></i><span>Proxys</span><em id="navProxyCount"></em></button>
       <button data-view="data"><i data-icon="table"></i><span>Datos y cuentas</span></button>
+      <button data-view="aitest"><i data-icon="sparkles"></i><span>Pruebas con IA</span><em id="navAiCount"></em></button>
       <button data-view="settings"><i data-icon="settings"></i><span>Ajustes</span></button>
     </nav>
     <div class="side-card" id="sideStatus"></div>
@@ -235,6 +236,32 @@
     </section>
 
     <!-- ================= AJUSTES ================= -->
+    <section id="view-aitest" class="view" data-title="Pruebas con IA">
+      <header class="page-head">
+        <div class="head-info"><p class="sub">Claude usa tu app como lo haría una persona, busca fallos y te deja un informe antes de publicarla</p></div>
+        <div class="group"><span id="aiKeyState" class="muted small"></span><button id="aiKeyBtn" class="soft"><i data-icon="key"></i>Clave de la API</button></div>
+      </header>
+      <div class="ai-layout">
+        <div class="panel ai-form">
+          <div class="panel-head"><h3>Nueva prueba</h3></div>
+          <label>Teléfonos<div id="aiDevices" class="ai-devices"></div></label>
+          <label>App (paquete)<input id="aiPkg" class="mono" list="aiPkgList" placeholder="com.miempresa.miapp" spellcheck="false" /><datalist id="aiPkgList"></datalist></label>
+          <label>Qué debe probar<textarea id="aiGoal" rows="5" placeholder="Ej.: Regístrate con una cuenta nueva, completa el perfil, añade un producto al carrito y llega al pago sin pagar. Revisa también que los textos se lean bien."></textarea></label>
+          <div class="ai-row">
+            <label>Pasos máximos<input id="aiSteps" type="number" min="3" max="100" value="30" /></label>
+            <label>Profundidad<select id="aiEffort"><option value="low">Rápida</option><option value="medium" selected>Normal</option><option value="high">A fondo</option></select></label>
+          </div>
+          <label class="chk"><input type="checkbox" id="aiClear" /> Borrar los datos de la app antes (empezar como recién instalada)</label>
+          <button id="aiStart" class="primary"><i data-icon="play"></i>Empezar prueba</button>
+          <p class="muted small">Cada paso envía una captura de la pantalla a la API de Claude (modelo Claude Opus 5.5). El coste depende de los pasos: una prueba de 30 pasos suele costar pocos dólares. Úsalo solo con tus apps y datos de prueba.</p>
+        </div>
+        <div class="panel ai-list">
+          <div class="panel-head"><h3>Pruebas</h3></div>
+          <div id="aiRuns" class="ai-runs"></div>
+        </div>
+      </div>
+    </section>
+
     <section id="view-settings" class="view" data-title="Ajustes">
       <header class="page-head"><div class="head-info"><p class="sub">Conexión, rendimiento, alertas y API</p></div><div class="group"><button id="setSave" class="primary"><i data-icon="save"></i>Guardar ajustes</button></div></header>
       <div id="settingsForm" class="settings"></div>
