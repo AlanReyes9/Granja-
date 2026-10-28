@@ -61,8 +61,21 @@
             </div>
             <label class="toggle row" title="Lo que hagas en una pantalla se replica en todos los seleccionados"><input type="checkbox" id="syncControl" /><span class="track"></span>Control sincronizado</label>
             <label class="toggle row"><input type="checkbox" id="liveView" checked /><span class="track"></span>Vista en vivo</label>
+            <label class="toggle row" title="Vídeo H.264 fluido (scrcpy). Desactívalo para usar capturas, que gastan menos en PCs lentos"><input type="checkbox" id="videoView" checked /><span class="track"></span>Vídeo en tiempo real</label>
           </div>
           <div class="cc-tab hidden" data-tab="otg">
+            <div class="otg-net">
+              <div class="otg-head"><span>Puerto</span><span class="otg-count" title="Teléfonos conectados por red"><i data-icon="smartphone" data-size="14"></i><b id="otgCount">0</b></span></div>
+              <div class="inline-row"><input id="otgPort" class="mono" value="5555" inputmode="numeric" /><button id="otgActivate" class="soft" title="adb tcpip en los teléfonos conectados por USB (los seleccionados, o todos)"><i data-icon="bolt"></i>Activar</button></div>
+              <div class="otg-head"><span>Rango de IP</span></div>
+              <div class="ip-row" id="otgFrom"><input value="192" /><span>.</span><input value="168" /><span>.</span><input value="1" /><span>.</span><input value="1" /></div>
+              <div class="ip-row" id="otgTo"><input disabled /><span>.</span><input disabled /><span>.</span><input disabled /><span>.</span><input id="otgToLast" value="255" /></div>
+              <div class="cc-buttons"><button id="otgAdd" class="soft"><i data-icon="plus"></i>Añadir</button><button id="otgScanRange" class="soft"><i data-icon="search"></i>Escanear</button></div>
+              <div class="otg-head"><span>Redes guardadas</span><button id="otgScanSaved" class="soft sm"><i data-icon="search"></i>Escanear</button></div>
+              <div id="otgNets" class="otg-nets"></div>
+              <p class="muted small">1. Conecta los teléfonos por USB y pulsa <b>Activar</b>: abre ADB por red en ese puerto. 2. Conéctalos a la red (router u OTG con Ethernet). 3. Pulsa <b>Escanear</b> en su rango de IP.</p>
+            </div>
+            <div class="section-title">Motor USB directo</div>
             <p class="muted small">El motor USB directo maneja los teléfonos conectados a hubs y adaptadores OTG sin adb.exe. Con él activo, cierra el servidor ADB para que libere los dispositivos.</p>
             <label class="toggle row"><input type="checkbox" id="otgToggle" /><span class="track"></span>Motor USB directo</label>
             <div id="otgList" class="otg-list"></div>

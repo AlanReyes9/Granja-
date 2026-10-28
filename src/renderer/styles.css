@@ -242,6 +242,8 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .screen { position: relative; background: var(--phone); aspect-ratio: 9 / 19.5; display: flex; align-items: center; justify-content: center; cursor: crosshair; user-select: none; overflow: hidden; }
 .screen img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .screen img:not([src]) { visibility: hidden; }
+.screen canvas.live { width: 100%; height: 100%; object-fit: contain; pointer-events: none; display: block; }
+.screen .hidden { display: none !important; }
 .screen .msg { position: absolute; color: #8b93a4; font-size: 10.5px; text-align: center; padding: 8px; }
 .screen .ripple { position: absolute; width: 16px; height: 16px; margin: -8px; border-radius: 50%; border: 2px solid var(--accent); pointer-events: none; animation: rip .45s ease-out forwards; }
 @keyframes rip { to { transform: scale(2.4); opacity: 0; } }
@@ -435,3 +437,16 @@ table.data .empty-row td { color: var(--muted); text-align: center; padding: 26p
 .act-pane textarea { font-size: 11.5px; word-break: break-all; }
 .act-error { color: var(--danger); background: var(--danger-soft); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
 .act-go { height: 42px; font-size: 14px; }
+
+/* Pestaña OTG: puerto y rangos de IP */
+.otg-net { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.otg-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 4px; }
+.otg-count { display: inline-flex; align-items: center; gap: 4px; color: var(--ok, #12b886); }
+#otgPort { width: 90px; }
+.ip-row { display: flex; align-items: center; gap: 4px; }
+.ip-row input { width: 100%; min-width: 0; text-align: center; padding: 6px 2px; }
+.ip-row input:disabled { opacity: .55; }
+.ip-row span { color: var(--muted); }
+.otg-nets { display: flex; flex-direction: column; gap: 4px; }
+.net-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.net-row .mono { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }

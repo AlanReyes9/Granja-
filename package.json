@@ -37,10 +37,12 @@
     "files": [
       "src/**/*",
       "build/icon.png",
+      "build/vendor/**",
       "package.json"
     ],
     "asarUnpack": [
-      "node_modules/usb/**"
+      "node_modules/usb/**",
+      "build/vendor/**"
     ],
     "npmRebuild": false,
     "win": {

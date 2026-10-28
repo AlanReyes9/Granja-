@@ -15,6 +15,7 @@ import { Tools } from './tools.js';
 import { parseCsv, toCsv } from './csv.js';
 import { ProxyManager } from './proxies.js';
 import { LicenseManager } from './licensing/license.js';
+import { ScreenStreamer } from './stream.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -115,6 +116,12 @@ function alert(message) {
   notifier.send(message).catch(() => {});
 }
 
+// Vídeo en tiempo real: los paquetes H.264 van por un canal propio (sin pasar por el de eventos).
+const streamer = new ScreenStreamer({ adb });
+streamer.on('packet', (serial, p) => win?.webContents.send('stream', { serial, config: p.config, key: p.key, pts: p.pts, data: p.data }));
+streamer.on('meta', (serial, meta) => emit('streamMeta', { serial, ...meta }));
+streamer.on('state', (serial, stateName, message) => emit('streamState', { serial, state: stateName, message: message || '' }));
+
 devices.on('changed', (list) => emit('devices', list));
 devices.on('connected', (serial) => {
   // Al conectar un teléfono con proxy asignado se le vuelve a aplicar (tras un reinicio se pierde a veces).
@@ -123,6 +130,7 @@ devices.on('connected', (serial) => {
 });
 devices.on('disconnected', (serial) => {
   delete health[serial];
+  streamer.stop(serial);
   if (settings().alertOnDisconnect) {
     const name = store.get('deviceMeta')[serial]?.name || serial;
     alert(`${name} se desconectó`);
@@ -187,6 +195,14 @@ const handlers = {
     shell.showItemInFolder(file);
     return file;
   },
+  // El vídeo en tiempo real necesita adb.exe (el motor USB directo sigue con capturas).
+  streamStart: (serial, opts) => {
+    const d = devices.get(serial);
+    if (!d || d.backend || d.state !== 'device') return false;
+    streamer.start(serial, opts);
+    return true;
+  },
+  streamStop: (serial) => streamer.stop(serial),
   openApp: (serials, pkg) => forEachSerial(serials, async (d) => {
     const { launchApp } = await import('./automation/actions.js');
     return launchApp(d, pkg);
@@ -230,6 +246,22 @@ const handlers = {
   pair: async (addr, code) => (await adb.pair(addr, code)).trim(),
   disconnect: (addr) => { devices.forgetWifi(addr); return adb.disconnect(addr); },
   usbToWifi: (serials) => forEachSerial(serials, (d) => devices.usbToWifi(d.serial)),
+  // Modo OTG/red (como GenFarmer): abrir el puerto en los USB y escanear rangos de IP guardados.
+  otgActivate: (port = 5555, serials) => devices.activatePort(Number(port) || 5555, serials),
+  otgScan: (from, to, port = 5555) => devices.scanRange(from, to, Number(port) || 5555, (done, total) => emit('progress', { label: `Escaneando ${from} – ${to}`, pct: Math.round((done / total) * 100) })),
+  otgNetworks: () => store.get('otgNetworks') || [],
+  otgSaveNetwork: (net) => {
+    const list = (store.get('otgNetworks') || []).filter((n) => !(n.from === net.from && n.to === net.to && n.port === net.port));
+    list.push({ from: net.from, to: net.to, port: Number(net.port) || 5555 });
+    store.set('otgNetworks', list);
+    return list;
+  },
+  otgDeleteNetwork: (i) => {
+    const list = store.get('otgNetworks') || [];
+    list.splice(i, 1);
+    store.set('otgNetworks', list);
+    return list;
+  },
   scanNetwork: (port = 5555) => devices.scanNetwork(port, (done, total) => emit('progress', { label: 'Escaneando red', pct: Math.round((done / total) * 100) })),
   scrcpy: (serial, opts = {}) => {
     const exe = settings().scrcpyPath || tools.localScrcpy();
@@ -424,6 +456,7 @@ function stopServices() {
   if (!servicesRunning) return;
   servicesRunning = false;
   engine.stopAll();
+  streamer.stopAll();
   devices.stop();
   scheduler.stop();
   api.close();
@@ -452,6 +485,7 @@ app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
   engine.stopAll();
+  streamer.stopAll();
   devices.stop();
   scheduler.stop();
   api.close();

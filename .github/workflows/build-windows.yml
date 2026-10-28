@@ -21,8 +21,36 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # Firma de código (quita el aviso de SmartScreen / "podría ser malicioso"). Se activa sola si existen
+      # los secretos del repositorio; sin ellos se compila sin firmar. Ver docs/FIRMA.md.
       - name: Empaquetar instalador y portable
-        run: npx electron-builder --win --x64 --publish never
+        shell: bash
+        env:
+          # Opción A: certificado .pfx (OV/EV) en base64 y su contraseña.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Opción B: Azure Trusted Signing (Microsoft Artifact Signing).
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
+        run: |
+          args=(--win --x64 --publish never)
+          if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_SIGN_ENDPOINT" ]; then
+            echo "Firmando con Azure Trusted Signing"
+            args+=(-c.win.azureSignOptions.endpoint="$AZURE_SIGN_ENDPOINT"
+                   -c.win.azureSignOptions.codeSigningAccountName="$AZURE_SIGN_ACCOUNT"
+                   -c.win.azureSignOptions.certificateProfileName="$AZURE_SIGN_PROFILE"
+                   -c.win.azureSignOptions.publisherName="$AZURE_SIGN_PUBLISHER")
+          elif [ -n "$CSC_LINK" ]; then
+            echo "Firmando con el certificado .pfx"
+          else
+            echo "::warning::Sin certificado de firma: Windows mostrará el aviso de SmartScreen. Ver docs/FIRMA.md"
+          fi
+          npx electron-builder "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: NexusFarmer-windows

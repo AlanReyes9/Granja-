@@ -212,6 +212,15 @@ export class DeviceManager extends EventEmitter {
     }
     const hosts = [];
     for (const base of bases) for (let i = 1; i < 255; i++) hosts.push(`${base}.${i}`);
+    return this.scanHosts(hosts, port, onProgress);
+  }
+
+  /** Escanea un rango concreto (p. ej. 192.168.1.1 → 192.168.1.255) y se conecta a los que respondan. */
+  async scanRange(from, to, port = 5555, onProgress) {
+    return this.scanHosts(ipRange(from, to), port, onProgress);
+  }
+
+  async scanHosts(hosts, port, onProgress) {
     const open = [];
     let done = 0;
     const probe = (host) => new Promise((resolve) => {
@@ -226,10 +235,40 @@ export class DeviceManager extends EventEmitter {
       while (queue.length) {
         await probe(queue.shift());
         done++;
-        if (done % 32 === 0) onProgress?.(done, hosts.length);
+        if (done % 32 === 0 || done === hosts.length) onProgress?.(done, hosts.length);
       }
     }));
-    for (const addr of open) await this.connectWifi(addr).catch(() => {});
-    return open;
+    const results = [];
+    for (const addr of open) results.push({ addr, out: await this.connectWifi(addr).catch((e) => e.message) });
+    return results;
   }
+
+  /**
+   * Abre ADB por red en el puerto indicado (adb tcpip) en los teléfonos conectados por USB, como
+   * paso previo para usarlos por la red del hub OTG / router. Devuelve el resultado por teléfono.
+   */
+  async activatePort(port = 5555, serials) {
+    const usb = [...this.devices.values()].filter((d) => d.state === 'device' && d.transport === 'usb' && !d.backend
+      && (!serials?.length || serials.includes(d.serial)));
+    const out = {};
+    for (const d of usb) {
+      try { out[d.serial] = (await this.adb.tcpip(d.serial, port)).trim() || 'ok'; } catch (e) { out[d.serial] = `Error: ${e.message}`; }
+    }
+    return out;
+  }
+}
+
+/** Lista de IPs entre dos direcciones IPv4 (incluidas), como mucho 4096. */
+export function ipRange(from, to) {
+  const toNum = (ip) => {
+    const p = String(ip).trim().split('.').map(Number);
+    if (p.length !== 4 || p.some((x) => !Number.isInteger(x) || x < 0 || x > 255)) throw new Error(`IP no válida: ${ip}`);
+    return ((p[0] << 24) >>> 0) + (p[1] << 16) + (p[2] << 8) + p[3];
+  };
+  const a = toNum(from); const b = toNum(to);
+  if (b < a) throw new Error('La IP final es menor que la inicial');
+  if (b - a >= 4096) throw new Error('El rango es demasiado grande (máximo 4096 direcciones)');
+  const out = [];
+  for (let n = a; n <= b; n++) out.push([n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.'));
+  return out;
 }

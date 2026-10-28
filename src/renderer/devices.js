@@ -1,6 +1,7 @@
 // Vista de dispositivos: cuadrícula en vivo, control táctil (individual o sincronizado) y acciones masivas.
 import { state, api, $, $$, esc, h, call, toast, modal, showResults, deviceName, icon, switchView } from './core.js';
 import { openAssignModal } from './proxies.js';
+import { attachCanvas, enableStream, isLive, liveSupported, onLiveEvent, resetStream } from './live.js';
 
 const cards = new Map(); // serial -> elemento
 const visible = new Set();
@@ -8,7 +9,13 @@ const lastShot = new Map(); // serial -> timestamp
 let observer;
 const NO_GROUP = '\u0000sin-grupo';
 // Preferencias de visualización (por equipo): tamaño de miniaturas y vista grande, calidad y fotogramas.
-const view = { thumb: 120, big: 680, quality: 70, fps: 1 };
+const view = { thumb: 120, big: 680, quality: 70, fps: 1, video: true };
+// Vídeo en tiempo real (H.264): ajustes para las miniaturas y para la vista grande.
+const STREAM_THUMB = { maxSize: 480, bitRate: 1000000, maxFps: 20 };
+const STREAM_BIG = { maxSize: 1080, bitRate: 4000000, maxFps: 30 };
+const streaming = new Map(); // serial -> 'thumb' | 'big'
+const streamFailed = new Map(); // serial -> momento del último fallo (se reintenta pasado un rato)
+let bigSerial = null;
 
 function loadViewPrefs() {
   try { Object.assign(view, JSON.parse(localStorage.getItem('granja.view') || '{}')); } catch {}
@@ -57,7 +64,7 @@ function createCard(d) {
   const el = h(`<div class="card" data-serial="${esc(d.serial)}">
     <div class="head" title="Clic para seleccionar · Doble clic para renombrar"><span class="idx"></span><span class="name"></span><input type="checkbox" class="sel" /></div>
     <div class="screen" title="Clic: tocar · Arrastrar: deslizar · Doble clic: abrir en grande · Clic derecho: atrás">
-      <img alt="" /><div class="msg"></div><div class="run-badge hidden"></div><div class="tags"></div>
+      <canvas class="live hidden"></canvas><img alt="" /><div class="msg"></div><div class="run-badge hidden"></div><div class="tags"></div>
     </div>
     <div class="navbar">
       <button data-k="4" title="Atrás">${icon('nav-back', 12)}</button>
@@ -78,6 +85,7 @@ function createCard(d) {
   el.querySelectorAll('[data-k]').forEach((b) => (b.onclick = () => call('key', targets(serial), b.dataset.k)));
   el.querySelector('.open').onclick = () => openDetails(serial);
   bindTouch(el.querySelector('.screen'), serial, { onDouble: () => openDetails(serial) });
+  el._detachLive = attachCanvas(serial, el.querySelector('canvas.live'));
   observer.observe(el);
   return el;
 }
@@ -108,7 +116,7 @@ function updateCard(el, d, num) {
   if (d.state === 'unauthorized') msg.textContent = 'Acepta "Permitir depuración USB" en el teléfono';
   else if (d.state === 'offline') msg.textContent = 'Sin conexión. Reconecta el cable o reinicia ADB.';
   else if (!ready) msg.textContent = `Estado: ${d.state}`;
-  else if (!el.querySelector('img').src) msg.textContent = $('#liveView').checked ? 'Cargando…' : 'Vista en vivo desactivada';
+  else if (!el.querySelector('img').src && !isLive(serialOf(el))) msg.textContent = $('#liveView').checked ? 'Cargando…' : 'Vista en vivo desactivada';
   else msg.textContent = '';
 }
 
@@ -146,7 +154,7 @@ export function renderDevices() {
   const grid = $('#deviceGrid');
   const keep = new Set(list.map((d) => d.serial));
   for (const [serial, el] of cards) {
-    if (!state.devices.some((d) => d.serial === serial)) { observer.unobserve(el); el.remove(); cards.delete(serial); visible.delete(serial); }
+    if (!state.devices.some((d) => d.serial === serial)) { observer.unobserve(el); el._detachLive?.(); el.remove(); cards.delete(serial); visible.delete(serial); }
     else if (!keep.has(serial)) el.style.display = 'none';
   }
   list.forEach((d, i) => {
@@ -209,9 +217,11 @@ function bindTouch(screen, serial, { onDouble, live = () => refreshShot(serial, 
   let pendingTap = null;
   const pos = (e) => {
     const img = screen.querySelector('img');
+    const canvas = screen.querySelector('canvas.live');
     const r = screen.getBoundingClientRect();
-    // La imagen usa object-fit: contain, así que se calcula el área real que ocupa.
-    const iw = img.naturalWidth || 9; const ih = img.naturalHeight || 19.5;
+    // La imagen (o el vídeo) usa object-fit: contain, así que se calcula el área real que ocupa.
+    const useCanvas = canvas && !canvas.classList.contains('hidden') && canvas.width > 0;
+    const iw = (useCanvas ? canvas.width : img.naturalWidth) || 9; const ih = (useCanvas ? canvas.height : img.naturalHeight) || 19.5;
     const scale = Math.min(r.width / iw, r.height / ih);
     const w = iw * scale; const hh = ih * scale;
     const ox = r.left + (r.width - w) / 2; const oy = r.top + (r.height - hh) / 2;
@@ -258,10 +268,65 @@ function bindTouch(screen, serial, { onDouble, live = () => refreshShot(serial, 
   }, { passive: false });
 }
 
+const serialOf = (el) => el.dataset.serial;
+
+/** Muestra el vídeo en vez de la captura cuando llegan fotogramas (y vuelve a la captura si se corta). */
+function showLive(screen, on) {
+  screen.querySelector('canvas.live')?.classList.toggle('hidden', !on);
+  screen.querySelector('img').classList.toggle('hidden', on);
+  if (on) screen.querySelector('.msg').textContent = '';
+}
+
+const videoWanted = () => view.video !== false && liveSupported() && $('#liveView').checked && !document.hidden;
+
+/**
+ * Arranca el vídeo de los teléfonos visibles y lo para en los que dejan de verse. El de la vista
+ * grande va con más resolución. Si un teléfono no puede emitir vídeo, sigue con capturas.
+ */
+async function syncStreams() {
+  const want = new Map();
+  if (videoWanted()) {
+    if (state.view === 'devices') for (const s of visible) want.set(s, 'thumb');
+    if (bigSerial) want.set(bigSerial, 'big');
+  }
+  for (const [s, mode] of want) {
+    const d = state.devices.find((x) => x.serial === s);
+    if (!d || d.state !== 'device') continue;
+    if (Date.now() - (streamFailed.get(s) || 0) < 60000) continue;
+    if (streaming.get(s) === mode) continue;
+    // Al pasar de miniatura a vista grande el servidor se reinicia: se espera su nueva configuración.
+    if (streaming.has(s)) resetStream(s);
+    streaming.set(s, mode);
+    enableStream(s);
+    const ok = await call('streamStart', s, mode === 'big' ? STREAM_BIG : STREAM_THUMB).catch(() => false);
+    if (!ok) { streaming.delete(s); streamFailed.set(s, Date.now()); }
+  }
+  for (const s of [...streaming.keys()]) {
+    if (want.has(s)) continue;
+    streaming.delete(s);
+    resetStream(s);
+    call('streamStop', s).catch(() => {});
+    const el = cards.get(s);
+    if (el) showLive(el.querySelector('.screen'), false);
+  }
+  // Si un vídeo deja de dar fotogramas, la tarjeta vuelve a la última captura.
+  for (const [s, el] of cards) if (!isLive(s, 6000)) showLive(el.querySelector('.screen'), false);
+}
+
+/** Estado del vídeo de un teléfono, desde el proceso principal. */
+export function onStreamState({ serial, state: st }) {
+  if (st === 'failed' && streaming.has(serial)) {
+    streaming.delete(serial);
+    streamFailed.set(serial, Date.now());
+    resetStream(serial);
+  }
+}
+
 async function refreshShot(serial, force = false) {
   const el = cards.get(serial);
   const d = state.devices.find((x) => x.serial === serial);
   if (!el || !d || d.state !== 'device') return;
+  if (!force && isLive(serial)) return;
   if (!force && Date.now() - (lastShot.get(serial) || 0) < shotInterval()) return;
   lastShot.set(serial, Date.now());
   try {
@@ -278,7 +343,7 @@ function startLiveLoop() {
   setInterval(() => {
     if (!$('#liveView').checked || state.view !== 'devices' || document.hidden) return;
     const limit = state.settings.thumbnailConcurrency || 6;
-    const queue = [...visible].filter((s) => Date.now() - (lastShot.get(s) || 0) >= shotInterval())
+    const queue = [...visible].filter((s) => !isLive(s) && Date.now() - (lastShot.get(s) || 0) >= shotInterval())
       .sort((a, b) => (lastShot.get(a) || 0) - (lastShot.get(b) || 0));
     while (busy < limit && queue.length) {
       const s = queue.shift();
@@ -286,6 +351,12 @@ function startLiveLoop() {
       refreshShot(s).finally(() => busy--);
     }
   }, 250);
+  setInterval(() => syncStreams().catch(() => {}), 1000);
+  onLiveEvent((serial, ev) => {
+    if (ev !== 'frame') return;
+    const el = cards.get(serial);
+    if (el) showLive(el.querySelector('.screen'), true);
+  });
 }
 
 async function renameOne(serial) {
@@ -309,7 +380,7 @@ export async function openDetails(serial) {
   const proxyOpts = ['<option value="">Sin proxy</option>', ...state.proxies.map((p) =>
     `<option value="${esc(p.key)}" ${p.key === meta.proxy ? 'selected' : ''}>${esc(p.key)}${p.status === 'error' ? ' (falla)' : ''}</option>`)].join('');
   const html = `<div class="big-device">
-    <div class="screen"><img alt="" /><div class="msg">Cargando…</div></div>
+    <div class="screen"><canvas class="live hidden"></canvas><img alt="" /><div class="msg">Cargando…</div></div>
     <div class="side">
       <div class="kv" id="dKv"><span>Serie</span><span class="mono">${esc(serial)}</span></div>
       <div class="section-title">Control</div>
@@ -333,13 +404,21 @@ export async function openDetails(serial) {
     const screen = el.querySelector('.screen');
     let refresh;
     bindTouch(screen, serial, { live: () => { clearTimeout(timer); refresh(); } });
+    // Vídeo en alta resolución mientras la vista grande está abierta; capturas si no hay vídeo.
+    const detach = attachCanvas(serial, screen.querySelector('canvas.live'));
+    bigSerial = serial;
+    syncStreams().catch(() => {});
     refresh = async () => {
-      try {
-        const shot = await api.call('screenshot', serial, Math.round(view.big * 0.75), Math.max(view.quality, 80));
-        screen.querySelector('img').src = shot.data;
-        screen.querySelector('.msg').textContent = '';
-      } catch {}
-      if (el.isConnected) timer = setTimeout(refresh, 800);
+      if (!el.isConnected) { detach(); if (bigSerial === serial) bigSerial = null; syncStreams().catch(() => {}); return; }
+      showLive(screen, isLive(serial, 3000));
+      if (!isLive(serial, 3000)) {
+        try {
+          const shot = await api.call('screenshot', serial, Math.round(view.big * 0.75), Math.max(view.quality, 80));
+          screen.querySelector('img').src = shot.data;
+          screen.querySelector('.msg').textContent = '';
+        } catch {}
+      }
+      timer = setTimeout(refresh, isLive(serial, 3000) ? 500 : 800);
     };
     refresh();
     const $m = (sel) => el.querySelector(sel);
@@ -400,7 +479,7 @@ async function openConnect() {
     el.querySelector('#cScan').onclick = async () => {
       out('Escaneando la red local, puede tardar unos 20 segundos');
       const found = await call('scanNetwork');
-      out(found.length ? `Encontrados: ${found.join(', ')}` : 'No se encontraron dispositivos con ADB por TCP (puerto 5555).', found.length > 0);
+      out(found.length ? `Encontrados: ${found.map((f) => f.addr).join(', ')}` : 'No se encontraron dispositivos con ADB por TCP (puerto 5555).', found.length > 0);
     };
     el.querySelector('#cUsbWifi').onclick = async () => {
       const sel = selectedSerials().filter((s) => state.devices.find((d) => d.serial === s)?.transport === 'usb');
@@ -512,6 +591,8 @@ export function initDevices() {
   $('#btnConnect').onclick = openConnect;
   $('#btnCcSettings').onclick = () => switchView('settings');
   $('#liveView').onchange = () => renderDevices();
+  $('#videoView').checked = view.video !== false;
+  $('#videoView').onchange = (e) => { view.video = e.target.checked; saveViewPrefs(); syncStreams().catch(() => {}); };
   $$('#ccTabs [data-tab]').forEach((b) => (b.onclick = () => {
     $$('#ccTabs [data-tab]').forEach((x) => x.classList.toggle('active', x === b));
     $$('.cc-tab').forEach((t) => t.classList.toggle('hidden', t.dataset.tab !== b.dataset.tab));
@@ -541,6 +622,7 @@ export function initDevices() {
     state.deviceMeta = await call('batchMeta', sel, { group: v.g.trim() });
     renderDevices();
   };
+  initOtgNetwork();
   $('#otgToggle').onchange = async (e) => {
     state.settings = await call('saveSettings', { otgEnabled: e.target.checked });
     toast(e.target.checked ? 'Motor USB directo activado' : 'Motor USB directo desactivado');
@@ -578,4 +660,77 @@ export function initDevices() {
   });
 
   startLiveLoop();
+}
+
+// ---------- Pestaña OTG: puerto y escaneo de redes (como GenFarmer) ----------
+function initOtgNetwork() {
+  const port = () => Number($('#otgPort').value) || 5555;
+  const octs = $$('#otgFrom input');
+  const last = $('#otgToLast');
+  const mirror = $$('#otgTo input[disabled]');
+  const syncTo = () => mirror.forEach((m, i) => (m.value = octs[i].value));
+  const range = () => {
+    const from = octs.map((o) => o.value.trim()).join('.');
+    const to = [...octs.slice(0, 3).map((o) => o.value.trim()), last.value.trim()].join('.');
+    return { from, to };
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem('nexus.otgForm') || 'null');
+    if (saved) { $('#otgPort').value = saved.port; saved.from.split('.').forEach((v, i) => (octs[i].value = v)); last.value = saved.last; }
+  } catch {}
+  const remember = () => { try { localStorage.setItem('nexus.otgForm', JSON.stringify({ port: port(), from: range().from, last: last.value })); } catch {} };
+  syncTo();
+  octs.forEach((o, i) => (o.oninput = () => {
+    o.value = o.value.replace(/\D/g, '').slice(0, 3);
+    if (o.value.length === 3 && i < 3) octs[i + 1].focus();
+    syncTo(); remember();
+  }));
+  last.oninput = () => { last.value = last.value.replace(/\D/g, '').slice(0, 3); remember(); };
+  $('#otgPort').oninput = remember;
+
+  const countNet = () => { $('#otgCount').textContent = state.devices.filter((d) => d.transport === 'wifi' && d.state === 'device').length; };
+  const renderNets = async (list) => {
+    list = list || await call('otgNetworks');
+    const box = $('#otgNets');
+    box.innerHTML = list.length ? '' : '<p class="muted small">Sin redes guardadas. Escribe un rango y pulsa Añadir.</p>';
+    list.forEach((n, i) => {
+      const row = h(`<div class="net-row"><span class="mono">${esc(n.from)} – ${esc(n.to.split('.').pop())}</span><span class="muted">:${n.port}</span>
+        <button class="ghost icon-only" title="Escanear">${icon('search', 13)}</button><button class="ghost icon-only danger" title="Quitar">${icon('x', 13)}</button></div>`);
+      const [scanBtn, delBtn] = row.querySelectorAll('button');
+      scanBtn.onclick = () => scan([n]);
+      delBtn.onclick = async () => renderNets(await call('otgDeleteNetwork', i));
+      box.appendChild(row);
+    });
+  };
+  const scan = async (nets) => {
+    let found = 0;
+    for (const n of nets) {
+      try {
+        const res = await call('otgScan', n.from, n.to, n.port);
+        found += res.filter((r) => /connected/i.test(r.out)).length;
+      } catch (e) { toast(String(e.message || e).replace(/^Error invoking remote method 'call': (Error: )?/, ''), 'error'); return; }
+    }
+    toast(found ? `${found} teléfono(s) conectados por red` : 'No se encontró ningún teléfono con ese puerto abierto', found ? 'info' : 'warn');
+    countNet();
+  };
+
+  $('#otgActivate').onclick = async () => {
+    const res = await call('otgActivate', port(), selectedSerials());
+    const n = Object.keys(res).length;
+    if (!n) return toast('No hay teléfonos conectados por USB para activar', 'warn');
+    showResults(`Puerto ${port()} activado`, Object.entries(res).map(([serial, out]) => ({ serial, ok: !/^Error/.test(out), out })));
+  };
+  $('#otgAdd').onclick = async () => {
+    const { from, to } = range();
+    try { renderNets(await call('otgSaveNetwork', { from, to, port: port() })); toast(`Red ${from} – ${to.split('.').pop()} guardada`); } catch (e) { toast(e.message, 'error'); }
+  };
+  $('#otgScanRange').onclick = () => { const { from, to } = range(); scan([{ from, to, port: port() }]); };
+  $('#otgScanSaved').onclick = async () => {
+    const list = await call('otgNetworks');
+    if (!list.length) return toast('No hay redes guardadas', 'warn');
+    scan(list);
+  };
+  renderNets();
+  countNet();
+  setInterval(countNet, 3000);
 }

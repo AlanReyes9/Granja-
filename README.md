@@ -33,6 +33,7 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 | Modo | Cómo |
 |---|---|
 | **USB (adb)** | Cable o hub USB, con *Depuración USB* activada. Aparecen solos. |
+| **OTG / red (como GenFarmer)** | Pestaña **OTG** del Centro de control. Pon el puerto (5555), pulsa **Activar** con los teléfonos por USB (abre ADB por red), conéctalos al router o al hub OTG con Ethernet y pulsa **Escanear** en su rango de IP (p. ej. 192.168.1.1 → 255). Los rangos se guardan en **Redes guardadas**. |
 | **Hubs / adaptadores OTG** | Igual que USB, o con el **motor USB directo (OTG)**: habla el protocolo ADB por libusb sin `adb.exe` ni servidor ADB, así un hub grande no satura el servidor. Se activa en *Ajustes*. |
 | **Wi-Fi** | *Conectar* → IP:puerto, **emparejar con código** (Android 11+), **escanear la red local** o pasar los seleccionados de **USB → Wi-Fi** en un clic. Si se cortan, se reconectan solos. |
 
@@ -51,7 +52,7 @@ Todas las capturas están en [`docs/capturas`](docs/capturas).
 - **Monitor de tareas**: acceso directo a las ejecuciones en curso.
 
 **Control de la granja**
-- Cuadrícula compacta con la pantalla de cada teléfono en vivo; el tamaño se ajusta con un deslizador.
+- Cuadrícula compacta con la pantalla de cada teléfono **en vídeo en tiempo real** (H.264 con el servidor oficial de scrcpy v3.1, que va incluido): fluido, sin el retraso de las capturas. Solo se emite vídeo de los teléfonos visibles; la vista grande sube a 1080p. Si un teléfono no puede (motor USB directo) sigue con capturas.
 - **Doble clic** en una pantalla la abre en grande, con controles, datos del teléfono, proxy y apps.
 - Clic = tocar, arrastrar = deslizar, mantener = pulsación larga, rueda = scroll, clic derecho = Atrás.
 - **Control sincronizado**: lo que haces en una pantalla se repite en todos los seleccionados, con coordenadas proporcionales para que funcione con resoluciones distintas.
@@ -110,6 +111,8 @@ La app necesita un **serial** para funcionar:
 - Las claves sin conexión están desactivadas.
 
 Todos los pasos están en [docs/LICENCIAS.md](docs/LICENCIAS.md).
+
+> **Aviso de Windows ("podría ser malicioso")**: aparece porque el `.exe` no está firmado. La compilación firma sola en cuanto añades un certificado; ver [docs/FIRMA.md](docs/FIRMA.md).
 
 | | |
 |---|---|

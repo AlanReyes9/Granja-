@@ -1,6 +1,6 @@
 // Punto de entrada de la interfaz: navegación, barra lateral y eventos del proceso principal.
 import { state, api, $, $$, esc, toast, reloadState, switchView, hydrateIcons } from './core.js';
-import { initDevices, renderDevices } from './devices.js';
+import { initDevices, renderDevices, onStreamState } from './devices.js';
 import { initEditor, highlightRuns } from './editor.js';
 import { initViews, renderRuns, appendLog, renderSchedules, renderTables, renderSettings, renderHistory } from './views.js';
 import { initProxies, renderProxies } from './proxies.js';
@@ -90,6 +90,7 @@ async function main() {
       highlightRuns();
       renderSideStatus();
     } else if (type === 'log') appendLog(payload);
+    else if (type === 'streamState') onStreamState(payload);
     else if (type === 'toast') toast(payload.message, payload.level);
     else if (type === 'health') { state.health = payload; renderDevices(); }
     else if (type === 'progress') {
