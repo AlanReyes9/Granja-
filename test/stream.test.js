@@ -70,7 +70,9 @@ test('ScreenStreamer: conecta por adb forward, reinicia con otros ajustes sin "p
     },
     spawnRaw: () => Object.assign(new EventEmitter(), { kill() {}, stdout: null, stderr: null }),
   };
-  const st = new ScreenStreamer({ adb, jar: new URL(import.meta.url).pathname });
+  const { fileURLToPath } = await import('node:url');
+  // Cualquier archivo que exista sirve (el push está simulado); fileURLToPath da una ruta válida también en Windows.
+  const st = new ScreenStreamer({ adb, jar: fileURLToPath(import.meta.url) });
   const states = [];
   const packets = [];
   st.on('state', (s, name) => states.push(name));
