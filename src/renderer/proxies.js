@@ -11,7 +11,8 @@ function assignments() {
 
 function statusChip(p) {
   if (p.status === 'ok') return `<span class="chip ok">${p.latency} ms</span>`;
-  if (p.status === 'error') return '<span class="chip error">Sin respuesta</span>';
+  if (p.status === 'auth') return `<span class="chip error" title="${esc(p.message || '')}">Usuario o clave incorrectos</span>`;
+  if (p.status === 'error') return `<span class="chip error" title="${esc(p.message || '')}">Sin respuesta</span>`;
   return '<span class="chip">Sin probar</span>';
 }
 
@@ -24,7 +25,7 @@ export function renderProxies() {
   for (const k of [...pxSelected]) if (!state.proxies.some((p) => p.key === k)) pxSelected.delete(k);
 
   const ok = state.proxies.filter((p) => p.status === 'ok').length;
-  const bad = state.proxies.filter((p) => p.status === 'error').length;
+  const bad = state.proxies.filter((p) => p.status === 'error' || p.status === 'auth').length;
   const assignedDevices = state.devices.filter((d) => asg[d.serial]).length;
   $('#proxySummary').textContent = state.proxies.length
     ? `${state.proxies.length} proxys · ${ok} responden · ${bad} sin respuesta · ${assignedDevices} de ${state.devices.length} dispositivos con proxy`
@@ -34,7 +35,7 @@ export function renderProxies() {
     <th>Proxy</th><th>Tipo</th><th>Auth</th><th>Estado</th><th>Asignado a</th></tr></thead><tbody>${list.length ? list.map((p) => `<tr>
       <td class="c"><input type="checkbox" data-px="${esc(p.key)}" ${pxSelected.has(p.key) ? 'checked' : ''}/></td>
       <td class="mono">${esc(p.key)}</td><td>${esc(p.scheme.toUpperCase())}</td>
-      <td>${p.user ? `<span class="chip warn" title="Usuario: ${esc(p.user)}. Android no envía usuario y clave: autoriza la IP en tu proveedor">Con clave</span>` : '<span class="muted">-</span>'}</td>
+      <td>${p.user ? `<span class="chip" title="Usuario: ${esc(p.user)}. El teléfono navega a través de la app, que añade el usuario y la clave: mantén la app abierta">Con clave</span>` : '<span class="muted">-</span>'}</td>
       <td>${statusChip(p)}</td>
       <td>${(usedBy[p.key] || []).map((s) => esc(deviceName(s))).join(', ') || '<span class="muted">Libre</span>'}</td></tr>`).join('')
     : '<tr class="empty-row"><td colspan="6">No hay proxys guardados</td></tr>'}</tbody>`;

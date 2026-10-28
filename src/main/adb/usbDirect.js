@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import net from 'node:net';
 
 let libs = null;
 async function loadLibs() {
@@ -57,6 +58,20 @@ function fileToStream(ReadableStream, filePath) {
       try { fs.closeSync(fd); } catch {}
     },
   });
+}
+
+/** Une un socket ADB (streams web) con una conexión TCP local. */
+function bridgeSocket(socket, port) {
+  const tcp = net.connect({ host: '127.0.0.1', port });
+  const writer = socket.writable.getWriter();
+  tcp.on('data', (d) => { writer.write(new Uint8Array(d)).catch(() => tcp.destroy()); });
+  tcp.on('close', () => { writer.close().catch(() => {}); Promise.resolve(socket.close()).catch(() => {}); });
+  tcp.on('error', () => {});
+  socket.readable.pipeTo(new WritableStream({
+    write: (chunk) => new Promise((resolve) => (tcp.write(Buffer.from(chunk)) ? resolve() : tcp.once('drain', resolve))),
+    close: () => tcp.end(),
+    abort: () => tcp.destroy(),
+  })).catch(() => tcp.destroy());
 }
 
 export class UsbDirectBackend {
@@ -152,6 +167,17 @@ export class UsbDirectBackend {
 
   async reboot(serial, mode) {
     await this.get(serial).power.reboot(mode || '');
+  }
+
+  /** Igual que "adb reverse": cada conexión del teléfono a su 127.0.0.1:port se une a 127.0.0.1:port del PC. */
+  async reverse(serial, port) {
+    const adb = this.get(serial);
+    await adb.reverse.remove(`tcp:${port}`).catch(() => {});
+    await adb.reverse.add(`tcp:${port}`, (socket) => bridgeSocket(socket, port));
+  }
+
+  async reverseRemove(serial, port) {
+    await this.get(serial).reverse.remove(`tcp:${port}`);
   }
 
   async closeAll() {

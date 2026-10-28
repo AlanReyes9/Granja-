@@ -39,6 +39,14 @@ export class Device {
     return this.backend ? this.backend.push(this.serial, local, remote) : this.manager.adb.push(this.serial, local, remote);
   }
 
+  reverse(port) {
+    return this.backend ? this.backend.reverse(this.serial, port) : this.manager.adb.reverse(this.serial, port);
+  }
+
+  reverseRemove(port) {
+    return this.backend ? this.backend.reverseRemove(this.serial, port) : this.manager.adb.reverseRemove(this.serial, port);
+  }
+
   reboot(mode) {
     return this.backend ? this.backend.reboot(this.serial, mode) : this.manager.adb.reboot(this.serial, mode);
   }

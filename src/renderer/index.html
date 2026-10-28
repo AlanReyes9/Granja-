@@ -142,7 +142,7 @@
               <button id="pxReplace" class="primary"><i data-icon="save"></i>Guardar lista</button>
               <button id="pxAppend"><i data-icon="plus"></i>Añadir a la lista</button>
             </div>
-            <p class="note"><i data-icon="info" data-size="14"></i><span>Android aplica el proxy HTTP global del sistema (<code>settings put global http_proxy</code>), que no admite usuario y contraseña. Para proxys con autenticación, autoriza la IP de salida de la granja en tu proveedor.</span></p>
+            <p class="note"><i data-icon="info" data-size="14"></i><span>Android aplica el proxy HTTP global del sistema, que no admite usuario y contraseña. Los proxys con usuario y clave (y los SOCKS5) pasan por un puente de la app en el PC que añade la autenticación: el teléfono necesita la app abierta y conectado (USB, Wi-Fi u OTG) para tener internet. Las apps que ignoran el proxy del sistema salen con la IP real.</span></p>
           </div>
         </div>
         <div class="panel grow">

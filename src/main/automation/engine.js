@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { KEYCODES, NODE_MAP } from '../../shared/nodes.js';
 import * as A from './actions.js';
+import { parseProxyLine } from '../proxies.js';
 
 const MAX_STEPS = 100000;
 
@@ -335,7 +336,14 @@ export class Engine extends EventEmitter {
         }
         return 0;
       }
-      case 'set_proxy': await device.shell(`settings put global http_proxy ${p.proxy ? p.proxy : ':0'}`); return 0;
+      case 'set_proxy': {
+        // Con usuario y clave pasa por el puente de la app (Android no sabe autenticarse en el proxy).
+        const px = p.proxy ? parseProxyLine(p.proxy) : null;
+        if (p.proxy && !px) throw new Error(`Proxy no válido: ${p.proxy}`);
+        if (this.proxies) await (px ? this.proxies.applyProxy(ctx.serial, px) : this.proxies.clearOnDevice(ctx.serial));
+        else await device.shell(`settings put global http_proxy ${px ? `${px.host}:${px.port}` : ':0'}`);
+        return 0;
+      }
       case 'proxy_assigned': {
         if (!this.proxies.assignments()[ctx.serial]) { log('Sin proxy asignado', 'warn'); return 1; }
         log(`Proxy aplicado: ${await this.proxies.apply(ctx.serial)}`);

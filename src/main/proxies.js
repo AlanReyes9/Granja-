@@ -1,5 +1,8 @@
 // Lista de proxys y asignación de un proxy por teléfono.
-import net from 'node:net';
+import { ProxyRelay, openTunnel } from './proxyRelay.js';
+
+/** Android solo sabe usar proxys HTTP sin clave: los demás pasan por el puente de la app. */
+export const needsRelay = (p) => !!p.user || /^socks/.test(p.scheme);
 
 /** Acepta host:puerto, host:puerto:usuario:clave, usuario:clave@host:puerto y http://usuario:clave@host:puerto */
 export function parseProxyLine(line) {
@@ -48,8 +51,10 @@ export function parseProxyList(text) {
  * Reparte proxys entre teléfonos. Los que ya están en uso por otros teléfonos no se repiten
  * mientras queden libres; si hay más teléfonos que proxys, se reparten en ciclo.
  */
+const isBad = (p) => p.status === 'error' || p.status === 'auth';
+
 export function distribute(serials, proxies, { strategy = 'sequential', current = {}, onlyHealthy = false } = {}) {
-  const pool = proxies.filter((p) => !onlyHealthy || p.status !== 'error').map((p) => p.key);
+  const pool = proxies.filter((p) => !onlyHealthy || !isBad(p)).map((p) => p.key);
   if (!pool.length) throw new Error('No hay proxys disponibles en la lista');
   const targets = new Set(serials);
   const busy = new Set(Object.entries(current).filter(([s, k]) => k && !targets.has(s)).map(([, k]) => k));
@@ -62,9 +67,10 @@ export function distribute(serials, proxies, { strategy = 'sequential', current 
 }
 
 export class ProxyManager {
-  constructor({ store, devices }) {
+  constructor({ store, devices, relay = new ProxyRelay() }) {
     this.store = store;
     this.devices = devices;
+    this.relay = relay;
   }
 
   list() {
@@ -119,18 +125,54 @@ export class ProxyManager {
   /** Aplica en el teléfono el proxy asignado (o lo quita si no tiene). */
   async apply(serial) {
     const key = this.assignments()[serial];
+    const p = key && this.list().find((x) => x.key === key);
+    if (!p) { await this.clearOnDevice(serial); return 'sin proxy'; }
+    return this.applyProxy(serial, p);
+  }
+
+  /**
+   * Pone un proxy en el teléfono. Si lleva usuario y clave (o es SOCKS), el teléfono usa el puente
+   * local de la app (127.0.0.1:puerto por adb reverse), que añade la autenticación.
+   */
+  async applyProxy(serial, p) {
     const d = this.devices.get(serial);
-    await d.shell(`settings put global http_proxy ${key || ':0'}`);
-    return key || 'sin proxy';
+    if (!needsRelay(p)) {
+      await this.dropRelay(serial, d);
+      await d.shell(`settings put global http_proxy ${p.host}:${p.port}`);
+      return p.key;
+    }
+    const port = await this.relay.ensure(serial, p);
+    try {
+      await d.reverse(port);
+    } catch (e) {
+      throw new Error(`No se pudo preparar el puente del proxy en el teléfono (adb reverse): ${e.message}`);
+    }
+    await d.shell(`settings put global http_proxy 127.0.0.1:${port}`);
+    return `${p.key} (con usuario y clave, a través de la app)`;
+  }
+
+  async dropRelay(serial, d = this.devices.get(serial)) {
+    const port = this.relay.port(serial);
+    if (!port) return;
+    await d?.reverseRemove(port).catch(() => {});
+    await this.relay.stop(serial);
   }
 
   async clearOnDevice(serial) {
-    await this.devices.get(serial).shell('settings put global http_proxy :0');
+    const d = this.devices.get(serial);
+    await d.shell('settings put global http_proxy :0');
+    await this.dropRelay(serial, d);
+  }
+
+  /** El teléfono tiene un proxy que pasa por el puente (y por tanto necesita la app abierta). */
+  usesRelay(serial) {
+    const p = this.list().find((x) => x.key === this.assignments()[serial]);
+    return !!p && needsRelay(p);
   }
 
   /** Asigna el siguiente proxy libre de la lista a un teléfono (rotación). */
   rotate(serial) {
-    const list = this.list().filter((p) => p.status !== 'error');
+    const list = this.list().filter((p) => !isBad(p));
     if (!list.length) throw new Error('No hay proxys disponibles');
     const current = this.assignments();
     const busy = new Set(Object.entries(current).filter(([s]) => s !== serial).map(([, k]) => k));
@@ -145,25 +187,25 @@ export class ProxyManager {
     return current[serial];
   }
 
-  /** Comprueba conexión TCP con cada proxy desde el PC y mide la latencia. */
-  async test(keys, onProgress) {
+  /**
+   * Prueba cada proxy desde el PC abriendo un túnel real (con su usuario y clave) y mide la latencia.
+   * Distingue "sin respuesta" de "usuario o clave incorrectos".
+   */
+  async test(keys, onProgress, { target = ['www.google.com', 443], timeout = 10000 } = {}) {
     const list = this.list();
     const targets = keys?.length ? list.filter((p) => keys.includes(p.key)) : list;
     let done = 0;
-    const probe = (p) => new Promise((resolve) => {
+    const probe = async (p) => {
       const t0 = Date.now();
-      const sock = net.connect({ host: p.host, port: p.port });
-      const finish = (ok) => {
-        sock.destroy();
-        p.status = ok ? 'ok' : 'error';
-        p.latency = ok ? Date.now() - t0 : null;
-        p.testedAt = Date.now();
-        resolve();
-      };
-      sock.setTimeout(5000, () => finish(false));
-      sock.on('connect', () => finish(true));
-      sock.on('error', () => finish(false));
-    });
+      try {
+        const { socket } = await openTunnel(p, target[0], target[1], { timeout });
+        socket.destroy();
+        Object.assign(p, { status: 'ok', latency: Date.now() - t0, message: '' });
+      } catch (e) {
+        Object.assign(p, { status: e.code === 'auth' ? 'auth' : 'error', latency: null, message: e.message });
+      }
+      p.testedAt = Date.now();
+    };
     const queue = [...targets];
     await Promise.all(Array.from({ length: Math.min(32, queue.length || 1) }, async () => {
       while (queue.length) {

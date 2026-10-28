@@ -13,7 +13,7 @@ import { Scheduler } from './scheduler.js';
 import { ApiServer } from './api.js';
 import { Tools } from './tools.js';
 import { parseCsv, toCsv } from './csv.js';
-import { ProxyManager } from './proxies.js';
+import { ProxyManager, parseProxyLine } from './proxies.js';
 import { LicenseManager } from './licensing/license.js';
 import { ScreenStreamer } from './stream.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -140,7 +140,8 @@ streamer.on('state', (serial, stateName, message) => emit('streamState', { seria
 devices.on('changed', (list) => emit('devices', list));
 devices.on('connected', (serial) => {
   // Al conectar un teléfono con proxy asignado se le vuelve a aplicar (tras un reinicio se pierde a veces).
-  if (!settings().autoApplyProxy || !proxies.assignments()[serial]) return;
+  // Con usuario y clave siempre: el teléfono apunta al puente de la app y sin "adb reverse" no tendría internet.
+  if (!proxies.assignments()[serial] || (!settings().autoApplyProxy && !proxies.usesRelay(serial))) return;
   setTimeout(() => proxies.apply(serial).catch(() => {}), 3000);
 });
 devices.on('disconnected', (serial) => {
@@ -255,7 +256,11 @@ const handlers = {
   }),
   openUrl: (serials, url) => forEachSerial(serials, (d) => d.shell(`am start -a android.intent.action.VIEW -d '${url.replace(/'/g, '')}'`)),
   reboot: (serials, mode) => forEachSerial(serials, (d) => d.reboot(mode)),
-  setProxy: (serials, proxy) => forEachSerial(serials, (d) => d.shell(`settings put global http_proxy ${proxy || ':0'}`)),
+  setProxy: (serials, proxy) => forEachSerial(serials, async (d) => {
+    const p = proxy ? parseProxyLine(proxy) : null;
+    if (proxy && !p) throw new Error(`Proxy no válido: ${proxy}`);
+    return p ? proxies.applyProxy(d.serial, p) : proxies.clearOnDevice(d.serial);
+  }),
   // ---------- Pruebas de apps con IA (Claude o Gemini) ----------
   aiKeyStatus: () => {
     const info = (p) => ({ configured: !!aiKey(p), fromEnv: !aiStoredKey(p) && !!process.env[AI_KEY_ENV[p]] });
@@ -586,6 +591,7 @@ app.whenReady().then(async () => {
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
+  proxies.relay.stopAll().catch(() => {});
   for (const r of aiRuns.values()) r.stop();
   engine.stopAll();
   streamer.stopAll();

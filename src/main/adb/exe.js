@@ -90,6 +90,15 @@ export class AdbExe {
     return this.run(['-s', serial, 'reboot', ...(mode ? [mode] : [])], { timeout: 15000 });
   }
 
+  /** El teléfono alcanza el puerto local del PC en su propio 127.0.0.1:port (sirve por USB y Wi-Fi). */
+  reverse(serial, port) {
+    return this.run(['-s', serial, 'reverse', `tcp:${port}`, `tcp:${port}`], { timeout: 10000 });
+  }
+
+  reverseRemove(serial, port) {
+    return this.run(['-s', serial, 'reverse', '--remove', `tcp:${port}`], { timeout: 10000 });
+  }
+
   spawnRaw(args) {
     return spawn(this.bin, args, { windowsHide: true });
   }
