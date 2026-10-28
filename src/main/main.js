@@ -17,7 +17,8 @@ import { ProxyManager } from './proxies.js';
 import { LicenseManager } from './licensing/license.js';
 import { ScreenStreamer } from './stream.js';
 import Anthropic from '@anthropic-ai/sdk';
-import { AiTestRun, AI_MODEL, reportHtml } from './ai/tester.js';
+import { AiTestRun, AI_MODEL, reportHtml, makeProvider } from './ai/tester.js';
+import { GEMINI_MODEL, listGeminiModels, providerErrorText } from './ai/providers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -118,14 +119,17 @@ function alert(message) {
   notifier.send(message).catch(() => {});
 }
 
-// Pruebas con IA en curso y la clave de la API de Claude (cifrada; si no hay, la de ANTHROPIC_API_KEY).
+// Pruebas con IA en curso y las claves de Claude y Gemini (cifradas; si no hay, las de las variables de entorno).
 const aiRuns = new Map();
-const aiStoredKey = () => {
-  const k = store.get('aiKey');
+const AI_KEY_STORE = { claude: 'aiKey', gemini: 'geminiKey' };
+const AI_KEY_ENV = { claude: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY' };
+const aiStoredKey = (provider = 'claude') => {
+  const k = store.get(AI_KEY_STORE[provider]);
   if (!k) return '';
   try { return k.enc ? safeStorage.decryptString(Buffer.from(k.enc, 'base64')) : k.plain || ''; } catch { return ''; }
 };
-const aiKey = () => aiStoredKey() || process.env.ANTHROPIC_API_KEY || '';
+const aiKey = (provider = 'claude') => aiStoredKey(provider) || process.env[AI_KEY_ENV[provider]] || '';
+const aiProvider = () => (store.get('aiProvider') === 'gemini' ? 'gemini' : 'claude');
 
 // Vídeo en tiempo real: los paquetes H.264 van por un canal propio (sin pasar por el de eventos).
 const streamer = new ScreenStreamer({ adb });
@@ -252,29 +256,53 @@ const handlers = {
   openUrl: (serials, url) => forEachSerial(serials, (d) => d.shell(`am start -a android.intent.action.VIEW -d '${url.replace(/'/g, '')}'`)),
   reboot: (serials, mode) => forEachSerial(serials, (d) => d.reboot(mode)),
   setProxy: (serials, proxy) => forEachSerial(serials, (d) => d.shell(`settings put global http_proxy ${proxy || ':0'}`)),
-  // ---------- Pruebas de apps con IA (Claude) ----------
-  aiKeyStatus: () => ({ configured: !!aiKey(), fromEnv: !aiStoredKey() && !!process.env.ANTHROPIC_API_KEY, model: AI_MODEL }),
-  aiSetKey: (key) => {
+  // ---------- Pruebas de apps con IA (Claude o Gemini) ----------
+  aiKeyStatus: () => {
+    const info = (p) => ({ configured: !!aiKey(p), fromEnv: !aiStoredKey(p) && !!process.env[AI_KEY_ENV[p]] });
+    const provider = aiProvider();
+    const geminiModel = store.get('geminiModel') || GEMINI_MODEL;
+    return { provider, configured: !!aiKey(provider), claude: info('claude'), gemini: info('gemini'), geminiModel,
+      model: provider === 'gemini' ? geminiModel : AI_MODEL };
+  },
+  /** Guarda la clave de un proveedor ('claude' o 'gemini'); vacía la borra. */
+  aiSetKey: (key, provider = 'claude') => {
+    if (!AI_KEY_STORE[provider]) throw new Error('Proveedor de IA desconocido');
     key = String(key || '').trim();
-    if (!key) store.set('aiKey', null);
+    if (!key) store.set(AI_KEY_STORE[provider], null);
     // La clave se guarda cifrada con el almacén seguro del sistema (DPAPI en Windows).
-    else store.set('aiKey', safeStorage.isEncryptionAvailable() ? { enc: safeStorage.encryptString(key).toString('base64') } : { plain: key });
+    else store.set(AI_KEY_STORE[provider], safeStorage.isEncryptionAvailable() ? { enc: safeStorage.encryptString(key).toString('base64') } : { plain: key });
     return handlers.aiKeyStatus();
   },
-  aiTestStart: ({ serials, pkg, goal, maxSteps = 30, clearData = false, effort = 'medium' }) => {
-    const key = aiKey();
-    if (!key) throw new Error('Configura primero la clave de la API de Claude');
+  aiSetProvider: ({ provider, geminiModel } = {}) => {
+    if (provider) store.set('aiProvider', provider === 'gemini' ? 'gemini' : 'claude');
+    if (geminiModel !== undefined) store.set('geminiModel', /^[\w.-]+$/.test(geminiModel) ? geminiModel : null);
+    return handlers.aiKeyStatus();
+  },
+  /** Modelos de Gemini disponibles para la clave guardada (o la que se está probando). */
+  aiGeminiModels: async (key) => {
+    const k = String(key || '').trim() || aiKey('gemini');
+    if (!k) throw new Error('Pon primero la clave de Gemini');
+    try { return await listGeminiModels(k); } catch (e) { throw new Error(providerErrorText(e)); }
+  },
+  aiTestStart: ({ serials, pkg, goal, maxSteps = 30, clearData = false, effort = 'medium', provider = aiProvider() }) => {
+    provider = provider === 'gemini' ? 'gemini' : 'claude';
+    const key = aiKey(provider);
+    if (!key) throw new Error(`Configura primero la clave de ${provider === 'gemini' ? 'Gemini' : 'Claude'} (botón "Proveedor de IA")`);
     if (!/^[A-Za-z][\w]*(\.[A-Za-z0-9_]+)+$/.test(String(pkg || ''))) throw new Error('Elige la app (paquete) que quieres probar');
     if (!String(goal || '').trim()) throw new Error('Describe qué debe probar la IA');
-    const client = new Anthropic({ apiKey: key });
+    effort = ['low', 'medium', 'high'].includes(effort) ? effort : 'medium';
+    const client = provider === 'claude' ? new Anthropic({ apiKey: key }) : null;
+    // Un proveedor por prueba: cada uno guarda su propia conversación.
+    const newProvider = () => (provider === 'gemini'
+      ? makeProvider('gemini', { apiKey: key, model: store.get('geminiModel') || GEMINI_MODEL })
+      : makeProvider('claude', { client, effort }));
     const ids = [];
     for (const serial of serials) {
       const device = devices.get(serial);
       if (!device || device.state !== 'device') continue;
       const id = `ai${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
       const outDir = path.join(screenshotsDir, 'Pruebas IA', `${pkg.replace(/[^\w.-]+/g, '_')}_${id}`);
-      const run = new AiTestRun({ id, serial, device, client, pkg, goal, maxSteps: Math.min(100, Math.max(3, Number(maxSteps) || 30)), clearData, outDir,
-        effort: ['low', 'medium', 'high'].includes(effort) ? effort : 'medium',
+      const run = new AiTestRun({ id, serial, device, provider: newProvider(), pkg, goal, maxSteps: Math.min(100, Math.max(3, Number(maxSteps) || 30)), clearData, outDir, effort,
         screenshot: async (s) => { const shot = await handlers.screenshot(s, 720, 75); return { base64: shot.data.split(',')[1], width: shot.width, height: shot.height }; } });
       aiRuns.set(id, run);
       const send = (kind, payload) => emit('aiTest', { id, serial, kind, payload, report: kind === 'done' ? payload : undefined });

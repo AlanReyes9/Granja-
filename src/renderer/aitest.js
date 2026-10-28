@@ -5,11 +5,53 @@ const runs = new Map(); // id -> informe (en curso o terminado)
 const lastLog = new Map(); // id -> último mensaje
 const errText = (e) => String(e?.message || e).replace(/^Error invoking remote method 'call': (Error: )?/, '');
 
+const PROVIDER_NAME = { claude: 'Claude', gemini: 'Gemini' };
+
 async function refreshKey() {
   const st = await call('aiKeyStatus');
-  $('#aiKeyState').textContent = st.configured ? (st.fromEnv ? 'Clave de ANTHROPIC_API_KEY' : 'Clave configurada') : 'Falta la clave de la API';
-  $('#aiKeyState').classList.toggle('error-text', !st.configured);
+  const p = st[st.provider];
+  $('#aiKeyState').textContent = `${PROVIDER_NAME[st.provider]} (${st.model}) · `
+    + (p.configured ? (p.fromEnv ? 'clave del sistema' : 'clave configurada') : 'falta la clave');
+  $('#aiKeyState').classList.toggle('error-text', !p.configured);
+  $('#aiCostNote').textContent = st.provider === 'gemini'
+    ? 'Cada paso envía una captura de la pantalla a la API de Gemini (Google AI Studio). Con la capa gratuita hay un límite de peticiones por minuto y por día; si se alcanza, la prueba se detiene con un aviso. Úsalo solo con tus apps y datos de prueba.'
+    : 'Cada paso envía una captura de la pantalla a la API de Claude (modelo Claude Opus 5.5). El coste depende de los pasos: una prueba de 30 pasos suele costar pocos dólares. Úsalo solo con tus apps y datos de prueba.';
   return st;
+}
+
+/** Ventana para elegir proveedor (Claude o Gemini), sus claves y el modelo de Gemini. */
+async function providerDialog() {
+  const st = await call('aiKeyStatus');
+  const keyHint = (p) => (st[p].configured ? (st[p].fromEnv ? 'Usando la de la variable de entorno' : 'Guardada (déjala vacía para no cambiarla)') : 'Sin configurar');
+  const html = `<p class="muted small">Las claves se guardan cifradas en este equipo. Claude: console.anthropic.com → API Keys. Gemini: aistudio.google.com → Get API key.</p>`;
+  const v = await modal({ title: 'Proveedor de IA', html, okText: 'Guardar', fields: [
+    { key: 'provider', label: 'IA que hará las pruebas', type: 'select', value: st.provider, options: [['claude', 'Claude (Anthropic)'], ['gemini', 'Gemini (Google AI Studio)']] },
+    { key: 'claude', label: `Clave de Claude (sk-ant-…) · ${keyHint('claude')}`, type: 'password' },
+    { key: 'gemini', label: `Clave de Gemini · ${keyHint('gemini')}`, type: 'password' },
+    { key: 'geminiModel', label: 'Modelo de Gemini', type: 'select', value: st.geminiModel, options: [[st.geminiModel, st.geminiModel]] },
+    { key: 'clear', label: 'Borrar las claves guardadas', type: 'checkbox' },
+  ], after: '<button type="button" class="ghost sm" data-a="models">Cargar modelos de Gemini</button>', onMount: (el) => {
+    const sel = el.querySelector('[data-k="geminiModel"]');
+    const load = async () => {
+      try {
+        const models = await call('aiGeminiModels', el.querySelector('[data-k="gemini"]').value);
+        const cur = sel.value;
+        sel.innerHTML = models.map((m) => `<option value="${esc(m.id)}" ${m.id === cur ? 'selected' : ''}>${esc(m.name)} (${esc(m.id)})</option>`).join('');
+        if (!models.some((m) => m.id === cur)) sel.insertAdjacentHTML('afterbegin', `<option value="${esc(cur)}" selected>${esc(cur)}</option>`);
+      } catch (e) { toast(errText(e), 'error'); }
+    };
+    el.querySelector('[data-a="models"]').onclick = load;
+    if (st.gemini.configured) load();
+  } });
+  if (!v) return;
+  try {
+    if (v.clear) { await call('aiSetKey', '', 'claude'); await call('aiSetKey', '', 'gemini'); }
+    if (v.claude.trim()) await call('aiSetKey', v.claude, 'claude');
+    if (v.gemini.trim()) await call('aiSetKey', v.gemini, 'gemini');
+    await call('aiSetProvider', { provider: v.provider, geminiModel: v.geminiModel });
+    toast(`Las pruebas usarán ${PROVIDER_NAME[v.provider]}`);
+  } catch (e) { toast(errText(e), 'error'); }
+  refreshKey();
 }
 
 function renderDevicesPick() {
@@ -69,7 +111,7 @@ function openReport(id) {
   const r = runs.get(id);
   if (!r) return;
   const html = `<div class="ai-detail">
-    <p>${statusBadge(r)} · ${esc(deviceName(r.serial))} · ${r.steps.length} pasos · tokens: ${r.usage?.input || 0} entrada / ${r.usage?.output || 0} salida</p>
+    <p>${statusBadge(r)} · ${esc(deviceName(r.serial))} · ${r.steps.length} pasos · ${esc(r.provider || 'Claude')} ${esc(r.model || '')} · tokens: ${r.usage?.input || 0} entrada / ${r.usage?.output || 0} salida</p>
     <p><b>Objetivo:</b> ${esc(r.goal)}</p>
     ${r.summary ? `<div class="section-title">Conclusión</div><p style="white-space:pre-wrap">${esc(r.summary)}</p>` : ''}
     <div class="section-title">Fallos (${r.bugs.length})</div>
@@ -98,14 +140,7 @@ export async function initAiTest() {
   renderRuns();
   refreshKey().catch(() => {});
   window.addEventListener('view', (e) => { if (e.detail === 'aitest') { renderDevicesPick(); loadPackages(); renderRuns(); } });
-  $('#aiKeyBtn').onclick = async () => {
-    const v = await modal({ title: 'Clave de la API de Claude', html: '<p class="muted small">Créala en console.anthropic.com → API Keys. Se guarda cifrada en este equipo. Déjala vacía para borrarla.</p>',
-      fields: [{ key: 'k', label: 'Clave (sk-ant-…)', type: 'password' }], okText: 'Guardar' });
-    if (!v) return;
-    await call('aiSetKey', v.k);
-    toast(v.k ? 'Clave guardada' : 'Clave borrada');
-    refreshKey();
-  };
+  $('#aiKeyBtn').onclick = providerDialog;
   $('#aiStart').onclick = async () => {
     const serials = [...$('#aiDevices').querySelectorAll('input:checked')].map((i) => i.value);
     const opts = { serials, pkg: $('#aiPkg').value.trim(), goal: $('#aiGoal').value.trim(), maxSteps: Number($('#aiSteps').value), clearData: $('#aiClear').checked, effort: $('#aiEffort').value };

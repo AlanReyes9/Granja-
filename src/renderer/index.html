@@ -238,8 +238,8 @@
     <!-- ================= AJUSTES ================= -->
     <section id="view-aitest" class="view" data-title="Pruebas con IA">
       <header class="page-head">
-        <div class="head-info"><p class="sub">Claude usa tu app como lo haría una persona, busca fallos y te deja un informe antes de publicarla</p></div>
-        <div class="group"><span id="aiKeyState" class="muted small"></span><button id="aiKeyBtn" class="soft"><i data-icon="key"></i>Clave de la API</button></div>
+        <div class="head-info"><p class="sub">La IA (Claude o Gemini) usa tu app como lo haría una persona, busca fallos y te deja un informe antes de publicarla</p></div>
+        <div class="group"><span id="aiKeyState" class="muted small"></span><button id="aiKeyBtn" class="soft"><i data-icon="key"></i>Proveedor de IA</button></div>
       </header>
       <div class="ai-layout">
         <div class="panel ai-form">
@@ -253,7 +253,7 @@
           </div>
           <label class="chk"><input type="checkbox" id="aiClear" /> Borrar los datos de la app antes (empezar como recién instalada)</label>
           <button id="aiStart" class="primary"><i data-icon="play"></i>Empezar prueba</button>
-          <p class="muted small">Cada paso envía una captura de la pantalla a la API de Claude (modelo Claude Opus 5.5). El coste depende de los pasos: una prueba de 30 pasos suele costar pocos dólares. Úsalo solo con tus apps y datos de prueba.</p>
+          <p id="aiCostNote" class="muted small"></p>
         </div>
         <div class="panel ai-list">
           <div class="panel-head"><h3>Pruebas</h3></div>

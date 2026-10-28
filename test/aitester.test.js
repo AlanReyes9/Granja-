@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AiTestRun, describeElements, reportHtml, AI_MODEL } from '../src/main/ai/tester.js';
+import { AiTestRun, describeElements, reportHtml, AI_MODEL, makeProvider } from '../src/main/ai/tester.js';
+import { providerErrorText } from '../src/main/ai/providers.js';
 
 // App de prueba: login -> inicio con "Comprar", que se cierra (crash) al pulsarlo.
 class DemoAppPhone {
@@ -136,4 +137,87 @@ test('agente de pruebas: un elemento inexistente vuelve como error y el límite 
   const over = seen[4].messages.at(-1).content[0];
   assert.equal(over.is_error, true);
   assert.match(over.content, /Se acabaron los pasos/);
+});
+
+// API de Gemini simulada: responde con las llamadas del guion y anota cada petición.
+function fakeGeminiFetch(script, seen, failures = []) {
+  let turn = 0;
+  return async (url, init) => {
+    const body = JSON.parse(init.body);
+    seen.push({ url, headers: init.headers, body });
+    const fail = failures.shift();
+    if (fail) return { ok: false, status: fail, json: async () => ({ error: { code: fail, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } }) };
+    const calls = script[turn++](body);
+    return { ok: true, status: 200, json: async () => ({
+      candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ text: 'pensando', thought: true, thoughtSignature: `sig${turn}` },
+        ...calls.map(([name, args]) => ({ functionCall: { name, args } }))] } }],
+      usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 10, thoughtsTokenCount: 5 },
+    }) };
+  };
+}
+
+test('agente de pruebas con Gemini: function calling, capturas recientes, firmas conservadas y reintentos', async () => {
+  const phone = new DemoAppPhone();
+  const seen = [];
+  const find = (body, label) => {
+    const last = body.contents.at(-1).parts;
+    const text = last.map((p) => p.text || p.functionResponse?.response?.result || '').join('\n');
+    return Number(text.match(new RegExp(`\\[(\\d+)\\][^\\n]*${label}`))[1]);
+  };
+  const script = [
+    (b) => [['type_text', { text: 'prueba', element: find(b, 'Usuario'), reason: 'Usuario' }]],
+    (b) => [['type_text', { text: 'Clave123', element: find(b, 'Contraseña'), reason: 'Clave' }]],
+    (b) => [['tap', { element: find(b, 'Entrar'), reason: 'Entrar' }]],
+    (b) => [['tap', { element: find(b, 'Comprar'), reason: 'Comprar' }]],
+    (b) => {
+      assert.match(JSON.stringify(b.contents.at(-1)), /CIERRE INESPERADO/);
+      return [['report_bug', { title: 'Cierre al comprar', severity: 'crítico', steps: 'Login y Comprar', expected: 'Carrito', actual: 'Se cierra' }],
+        ['finish', { passed: false, summary: 'Comprar cierra la app.' }]];
+    },
+  ];
+  // Primera petición: modelo saturado (503) dos veces; se reintenta y sigue con el mismo modelo.
+  const provider = makeProvider('gemini', { apiKey: 'k', model: 'gemini-x', fetchImpl: fakeGeminiFetch(script, seen, [503, 503]), retryDelay: 1, fallbacks: [] });
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nxf-ai-'));
+  const run = new AiTestRun({ id: 'g1', serial: 'S1', device: phone, provider, pkg: 'com.demo.app', goal: 'Inicia sesión y compra', maxSteps: 10, outDir,
+    screenshot: async () => ({ base64: Buffer.from('jpeg').toString('base64'), width: 540, height: 1170 }) });
+  const r = await run.run();
+  assert.equal(r.status, 'con fallos');
+  assert.equal(r.provider, 'Gemini');
+  assert.equal(r.model, 'gemini-x');
+  assert.equal(r.bugs[0].title, 'Cierre al comprar');
+  assert.deepEqual(r.usage, { input: 500, output: 75, cacheRead: 0 });
+  assert.equal(seen.length, 7, '2 errores 503 reintentados + 5 turnos');
+  const req = seen.at(-1);
+  assert.match(req.url, /models\/gemini-x:generateContent$/);
+  assert.equal(req.headers['x-goog-api-key'], 'k');
+  assert.equal(req.body.toolConfig.functionCallingConfig.mode, 'ANY');
+  const decls = req.body.tools[0].functionDeclarations;
+  assert.deepEqual(decls.map((d) => d.name), ['tap', 'type_text', 'swipe', 'press_key', 'wait', 'report_bug', 'finish']);
+  assert.ok(!JSON.stringify(decls).includes('additionalProperties'), 'esquemas en el subconjunto que acepta Gemini');
+  // Turnos del modelo tal cual (con firmas de razonamiento) y respuestas de función con la captura nueva.
+  const models = req.body.contents.filter((c) => c.role === 'model');
+  assert.deepEqual(models.map((c) => c.parts[0].thoughtSignature), ['sig1', 'sig2', 'sig3', 'sig4']);
+  assert.equal(req.body.contents.at(-1).parts[0].functionResponse.name, 'tap');
+  // Solo viajan las 3 capturas más recientes.
+  const withImage = req.body.contents.filter((c) => c.parts.some((p) => p.inlineData)).length;
+  assert.equal(withImage, 3);
+  assert.match(JSON.stringify(req.body.contents[0]), /captura anterior omitida/);
+});
+
+test('Gemini: si el modelo elegido está saturado al empezar, cambia a otro; los errores se explican claro', async () => {
+  const seen = [];
+  const p = makeProvider('gemini', { apiKey: 'k', model: 'gemini-a', fetchImpl: fakeGeminiFetch([() => [['wait', { seconds: 1, reason: 'x' }]]], seen, [503, 503]),
+    retries: 1, retryDelay: 1, fallbacks: ['gemini-b'] });
+  p.start({ image: 'AA==', text: 'pantalla' });
+  const res = await p.next();
+  assert.equal(res.calls[0].name, 'wait');
+  assert.equal(p.model, 'gemini-b');
+  assert.match(seen.at(-1).url, /gemini-b:generateContent/);
+  // Después del primer turno no se cambia de modelo: el error llega al usuario.
+  const p2 = makeProvider('gemini', { apiKey: 'k', model: 'gemini-a', fetchImpl: fakeGeminiFetch([], [], [400]), retries: 0, fallbacks: [] });
+  p2.start({ image: 'AA==', text: 'x' });
+  await assert.rejects(p2.next(), (e) => e.status === 400);
+  const bad = makeProvider('gemini', { apiKey: 'k', fetchImpl: async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'API key not valid.', details: [{ reason: 'API_KEY_INVALID' }] } }) }), fallbacks: [] });
+  bad.start({ image: 'AA==', text: 'x' });
+  await assert.rejects(bad.next(), (e) => /clave de Gemini no es válida/.test(providerErrorText(e)));
 });

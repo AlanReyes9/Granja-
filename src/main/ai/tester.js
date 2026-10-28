@@ -1,14 +1,13 @@
-// Pruebas de apps con IA: Claude mira la pantalla del teléfono (captura + lista de elementos), decide
-// qué tocar o escribir para cumplir un objetivo, detecta cierres inesperados y ANR y deja un informe.
-// Pensado para probar las apps propias antes de publicarlas en Play Store.
+// Pruebas de apps con IA: la IA (Claude o Gemini) mira la pantalla del teléfono (captura + lista de
+// elementos), decide qué tocar o escribir para cumplir un objetivo, detecta cierres inesperados y ANR y
+// deja un informe. Pensado para probar las apps propias antes de publicarlas en Play Store.
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import Anthropic from '@anthropic-ai/sdk';
 import * as A from '../automation/actions.js';
+import { ClaudeProvider, GeminiProvider, CLAUDE_MODEL, providerErrorText } from './providers.js';
 
-export const AI_MODEL = 'claude-opus-5-5';
-const BETAS = ['context-management-2025-06-27', 'server-side-fallback-2026-07-01'];
+export const AI_MODEL = CLAUDE_MODEL;
 
 const SYSTEM = `Eres un probador de apps Android (QA). Pruebas la app de su desarrollador antes de publicarla en Play Store.
 En cada paso recibes una captura de la pantalla, la lista numerada de elementos visibles y avisos del sistema (cierres inesperados, ANR, app en segundo plano).
@@ -55,6 +54,13 @@ const TOOLS = [
 
 const KEYS = { back: 4, home: 3, enter: 66, recent_apps: 187 };
 
+/** Proveedor de IA con las instrucciones y herramientas del probador. */
+export function makeProvider(kind, opts) {
+  return kind === 'gemini'
+    ? new GeminiProvider({ ...opts, system: SYSTEM, tools: TOOLS })
+    : new ClaudeProvider({ ...opts, system: SYSTEM, tools: TOOLS });
+}
+
 /** Elementos útiles de la pantalla, numerados, con su centro en coordenadas 0-1000. */
 export function describeElements(nodes, size) {
   const list = [];
@@ -77,12 +83,13 @@ export function describeElements(nodes, size) {
 
 /**
  * Una prueba en un teléfono. Eventos: 'step' (paso), 'bug' (fallo), 'log' (mensaje), 'done' (informe).
- * deps: { device, client (Anthropic), screenshot(serial) => { base64, width, height }, outDir, model, effort }
+ * deps: { device, provider (o client de Anthropic), screenshot(serial) => { base64, width, height }, outDir }
  */
 export class AiTestRun extends EventEmitter {
-  constructor({ id, serial, device, client, screenshot, pkg, goal, maxSteps = 30, clearData = false, outDir, model = AI_MODEL, effort = 'medium' }) {
+  constructor({ id, serial, device, provider, client, screenshot, pkg, goal, maxSteps = 30, clearData = false, outDir, model = AI_MODEL, effort = 'medium' }) {
     super();
-    Object.assign(this, { id, serial, device, client, screenshot, pkg, goal, maxSteps, clearData, outDir, model, effort });
+    provider = provider || makeProvider('claude', { client, model, effort });
+    Object.assign(this, { id, serial, device, provider, screenshot, pkg, goal, maxSteps, clearData, outDir, model: provider.model, effort });
     this.steps = [];
     this.bugs = [];
     this.status = 'ejecutando';
@@ -129,10 +136,7 @@ export class AiTestRun extends EventEmitter {
       `Pasos usados: ${this.steps.length} de ${this.maxSteps}.`,
       `Elementos en pantalla:\n${this.elements.map((e) => e.line).join('\n') || '(no se pudieron leer: usa coordenadas de la captura)'}`,
     ].filter(Boolean).join('\n\n');
-    return { shot, content: [
-      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: shot.base64 } },
-      { type: 'text', text },
-    ] };
+    return { shot, obs: { image: shot.base64, text } };
   }
 
   /** Nuevas líneas del registro de cierres (FATAL EXCEPTION) y de ANR desde la última lectura. */
@@ -212,34 +216,20 @@ export class AiTestRun extends EventEmitter {
       await A.sleep(3000, signal);
       const first = await this.observe(`Objetivo de la prueba: ${this.goal}\nApp: ${this.pkg}\nEmpieza.`);
       this.saveShot(first.shot, 0);
-      const messages = [{ role: 'user', content: first.content }];
+      this.provider.start(first.obs);
 
       for (let turn = 0; turn < this.maxSteps * 2 + 10 && !signal.aborted; turn++) {
-        const res = await this.client.beta.messages.create({
-          model: this.model,
-          max_tokens: 16000,
-          betas: BETAS,
-          fallbacks: 'default',
-          system: SYSTEM,
-          tools: TOOLS,
-          output_config: { effort: this.effort },
-          // Las capturas antiguas se retiran del contexto en el servidor: el coste no crece sin control.
-          context_management: { edits: [{ type: 'clear_tool_uses_20250919', trigger: { type: 'input_tokens', value: 30000 },
-            keep: { type: 'tool_uses', value: 4 }, exclude_tools: ['report_bug'] }] },
-          messages,
-        }, { signal });
-        this.usage.input += res.usage?.input_tokens || 0;
-        this.usage.output += res.usage?.output_tokens || 0;
-        this.usage.cacheRead += res.usage?.cache_read_input_tokens || 0;
-        messages.push({ role: 'assistant', content: res.content });
+        const res = await this.provider.next(signal);
+        this.usage.input += res.usage.input;
+        this.usage.output += res.usage.output;
+        this.usage.cacheRead += res.usage.cacheRead;
 
-        if (res.stop_reason === 'refusal') throw new Error('La IA no ha podido continuar con esta prueba (rechazo de seguridad)');
-        if (res.stop_reason === 'pause_turn') continue;
-        const uses = res.content.filter((b) => b.type === 'tool_use');
+        if (res.refusal) throw new Error('La IA no ha podido continuar con esta prueba (rechazo de seguridad)');
+        if (res.paused) continue;
+        const uses = res.calls;
         if (!uses.length) {
           // Respondió sin herramienta: se toma como conclusión.
-          const text = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-          this.finish(false, text || 'La IA terminó sin conclusión');
+          this.finish(false, res.text || 'La IA terminó sin conclusión');
           break;
         }
 
@@ -253,13 +243,13 @@ export class AiTestRun extends EventEmitter {
             this.bugs.push(bug);
             this.emit('bug', bug);
             this.log(`Fallo (${input.severity}): ${input.title}`, 'warn');
-            results.push({ type: 'tool_result', tool_use_id: use.id, content: 'Fallo registrado.' });
+            results.push({ id: use.id, name: use.name, text: 'Fallo registrado.' });
           } else if (use.name === 'finish') {
             this.finish(!!input.passed, input.summary || '');
-            results.push({ type: 'tool_result', tool_use_id: use.id, content: 'Prueba terminada.' });
+            results.push({ id: use.id, name: use.name, text: 'Prueba terminada.' });
             finished = true;
           } else if (this.steps.length >= this.maxSteps) {
-            results.push({ type: 'tool_result', tool_use_id: use.id, is_error: true, content: 'Se acabaron los pasos: llama a finish con la conclusión.' });
+            results.push({ id: use.id, name: use.name, isError: true, text: 'Se acabaron los pasos: llama a finish con la conclusión.' });
           } else {
             let outcome;
             let isError = false;
@@ -272,10 +262,10 @@ export class AiTestRun extends EventEmitter {
             const obs = await this.observe(outcome);
             step.screenshot = this.saveShot(obs.shot, step.n);
             this.emit('step', step);
-            results.push({ type: 'tool_result', tool_use_id: use.id, is_error: isError, content: obs.content });
+            results.push({ id: use.id, name: use.name, isError, obs: obs.obs });
           }
         }
-        messages.push({ role: 'user', content: results });
+        this.provider.addResults(results);
         if (finished) break;
         // Sin pasos libres se le dan dos turnos para escribir la conclusión con finish.
         if (!acted && this.steps.length >= this.maxSteps && ++this.overLimit >= 2) { this.finish(false, 'Se alcanzó el límite de pasos sin conclusión'); break; }
@@ -303,19 +293,13 @@ export class AiTestRun extends EventEmitter {
   report() {
     return {
       id: this.id, serial: this.serial, pkg: this.pkg, goal: this.goal, status: this.status, passed: !!this.passed,
-      summary: this.summary, steps: this.steps, bugs: this.bugs, usage: this.usage, model: this.model,
+      summary: this.summary, steps: this.steps, bugs: this.bugs, usage: this.usage, model: this.provider.model, provider: this.provider.name,
       startedAt: this.startedAt, finishedAt: this.finishedAt || null, outDir: this.outDir,
     };
   }
 }
 
-export function errorText(e) {
-  if (e instanceof Anthropic.AuthenticationError) return 'La clave de la API de Claude no es válida (botón "Clave de la API" en Pruebas con IA)';
-  if (e instanceof Anthropic.RateLimitError) return 'Límite de uso de la API de Claude alcanzado: espera un poco y vuelve a intentarlo';
-  if (e instanceof Anthropic.APIConnectionError) return 'No se pudo conectar con la API de Claude (revisa la conexión a internet)';
-  if (e instanceof Anthropic.APIError) return `Error de la API de Claude (${e.status}): ${e.message}`;
-  return e?.message || String(e);
-}
+export const errorText = providerErrorText;
 
 /** Informe HTML autocontenido (capturas incrustadas) para compartir. */
 export function reportHtml(r) {
@@ -328,7 +312,7 @@ export function reportHtml(r) {
 .steps{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.step{border:1px solid #e5e7eb;border-radius:10px;padding:8px;font-size:12px}
 .step img{width:100%;border-radius:6px}pre{white-space:pre-wrap}</style></head><body>
 <h1>Prueba de ${esc(r.pkg)}</h1>
-<p class="muted">${new Date(r.startedAt).toLocaleString('es-ES')} · ${esc(r.serial)} · ${r.steps.length} pasos · modelo ${esc(r.model)}</p>
+<p class="muted">${new Date(r.startedAt).toLocaleString('es-ES')} · ${esc(r.serial)} · ${r.steps.length} pasos · ${esc(r.provider || '')} ${esc(r.model)}</p>
 <p><b>Objetivo:</b> ${esc(r.goal)}</p>
 <p><b>Resultado:</b> <span class="${r.passed ? 'ok' : 'ko'}">${esc(r.status)}</span></p>
 <pre>${esc(r.summary)}</pre>
