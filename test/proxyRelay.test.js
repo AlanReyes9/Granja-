@@ -133,7 +133,8 @@ test('ProxyManager: con usuario y clave usa el puente (adb reverse + 127.0.0.1) 
   assert.equal(list[1].status, 'auth');
   // Quitar el proxy: se borra del teléfono y se cierra el puente.
   await pm.clearOnDevice('a');
-  assert.deepEqual(cmds.slice(-2), ['settings put global http_proxy :0', `unreverse ${port}`]);
+  assert.match(cmds.at(-3), /^settings put global http_proxy :0; .*settings delete global global_http_proxy_host/);
+  assert.equal(cmds.at(-2), `unreverse ${port}`);
   assert.equal(pm.relay.port('a'), null);
   t.srv.close(); px.srv.close();
 });

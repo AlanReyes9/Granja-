@@ -435,7 +435,10 @@ export async function openDetails(serial) {
       const cur = await call('readDeviceProxy', serial);
       toast(cur && cur !== 'null' && cur !== ':0' ? `Proxy activo en el teléfono: ${cur}` : 'El teléfono no tiene proxy activo');
     };
-    $m('#dProxyClear').onclick = async () => { await call('setProxy', [serial], ''); toast('Proxy quitado del teléfono (la asignación se mantiene)'); };
+    $m('#dProxyClear').onclick = async () => {
+      const [r] = await call('setProxy', [serial], '');
+      toast(r?.ok === false ? r.out : 'Proxy quitado del teléfono (la asignación se mantiene)', r?.ok === false ? 'error' : 'info');
+    };
     $m('#dMirror').onclick = () => call('scrcpy', serial);
     $m('#dMirrorView').onclick = () => call('scrcpy', serial, { noControl: true });
     $m('#dRecord').onclick = () => { call('scrcpy', serial, { record: true }); toast('Grabando. Cierra la ventana de scrcpy para terminar; el vídeo se guarda en Imágenes/Nexus Farmer.'); };

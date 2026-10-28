@@ -51,6 +51,17 @@ export function parseProxyList(text) {
  * Reparte proxys entre teléfonos. Los que ya están en uso por otros teléfonos no se repiten
  * mientras queden libres; si hay más teléfonos que proxys, se reparten en ciclo.
  */
+export const CLEAR_PROXY_CMD = [
+  'settings put global http_proxy :0',
+  'settings delete global global_http_proxy_host',
+  'settings delete global global_http_proxy_port',
+  'settings delete global global_http_proxy_exclusion_list',
+  'settings delete global global_proxy_pac_url',
+  'settings delete global http_proxy',
+  // Reconectar la Wi-Fi para que las apps dejen de usar el proxy antiguo.
+  'svc wifi disable; sleep 1; svc wifi enable',
+].join('; ');
+
 const isBad = (p) => p.status === 'error' || p.status === 'auth';
 
 export function distribute(serials, proxies, { strategy = 'sequential', current = {}, onlyHealthy = false } = {}) {
@@ -158,10 +169,18 @@ export class ProxyManager {
     await this.relay.stop(serial);
   }
 
+  /**
+   * Quita el proxy del teléfono del todo. ":0" hace que Android borre su proxy global, pero algunas
+   * marcas dejan guardados host/puerto (p. ej. 127.0.0.1 del puente) y el teléfono sigue sin
+   * internet aunque se borre la Wi-Fi: se eliminan también esos ajustes y se reinicia la Wi-Fi.
+   */
   async clearOnDevice(serial) {
     const d = this.devices.get(serial);
-    await d.shell('settings put global http_proxy :0');
+    await d.shell(CLEAR_PROXY_CMD);
     await this.dropRelay(serial, d);
+    const left = (await d.shell('settings get global http_proxy; settings get global global_http_proxy_host').catch(() => ''))
+      .split(/\s+/).filter((v) => v && v !== 'null' && v !== ':0');
+    if (left.length) throw new Error(`El teléfono sigue con un proxy guardado (${left.join(' ')}). Reinícialo y vuelve a quitarlo.`);
   }
 
   /** El teléfono tiene un proxy que pasa por el puente (y por tanto necesita la app abierta). */

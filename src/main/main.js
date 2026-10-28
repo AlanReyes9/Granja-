@@ -409,8 +409,11 @@ const handlers = {
     return result;
   },
   proxiesUnassign: async (serials, clearDevice) => {
+    // Un teléfono que usa el puente (proxy con clave) se quedaría sin internet: se le quita siempre.
+    const viaRelay = new Set(serials.filter((s) => proxies.usesRelay(s) || proxies.relay.port(s)));
     proxies.unassign(serials);
-    if (clearDevice) await forEachSerial(serials, (d) => proxies.clearOnDevice(d.serial));
+    const toClear = clearDevice ? serials : serials.filter((s) => viaRelay.has(s));
+    if (toClear.length) await forEachSerial(toClear, (d) => proxies.clearOnDevice(d.serial));
     return store.get('deviceMeta');
   },
   proxySetOne: async (serial, key, apply) => {

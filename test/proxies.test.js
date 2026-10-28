@@ -59,5 +59,8 @@ test('ProxyManager: lista, asignación, rotación, aplicación y borrado', async
   pm.remove(['3.3.3.3:82']);
   assert.equal(pm.assignments().a, undefined);
   await pm.apply('a');
-  assert.deepEqual(cmds.pop(), ['a', 'settings put global http_proxy :0']);
+  // Quitar: se borran todos los ajustes de proxy de Android y se comprueba que no queda nada.
+  assert.deepEqual(cmds.at(-1), ['a', 'settings get global http_proxy; settings get global global_http_proxy_host']);
+  const clear = cmds.at(-2)[1];
+  for (const k of ['http_proxy :0', 'delete global global_http_proxy_host', 'delete global global_http_proxy_port', 'delete global http_proxy', 'svc wifi enable']) assert.ok(clear.includes(k), k);
 });
