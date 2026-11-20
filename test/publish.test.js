@@ -12,8 +12,8 @@ const node = (attrs) => `<node ${Object.entries(attrs).map(([k, v]) => `${k}="${
 
 /** Teléfono con TikTok (en el idioma indicado): Compartir -> editor (Siguiente) -> publicar (descripción + Publicar). */
 class ClipPhone {
-  constructor({ lang = 'es', noPostButton = false, notInstalled = false } = {}) {
-    Object.assign(this, { lang, noPostButton, notInstalled, screen: 'home', cmds: [], pushed: [], typed: '', gallery: new Map(), nextId: 40 });
+  constructor({ lang = 'es', noPostButton = false, notInstalled = false, pkg = 'com.zhiliaoapp.musically', noNext = false } = {}) {
+    Object.assign(this, { lang, noPostButton, notInstalled, pkg, noNext, screen: 'home', cmds: [], pushed: [], typed: '', gallery: new Map(), nextId: 40 });
   }
   t(es, en) { return this.lang === 'es' ? es : en; }
   async getScreenSize() { return { width: 1080, height: 2340 }; }
@@ -43,8 +43,9 @@ class ClipPhone {
     }
     if (cmd.startsWith('am start -a android.intent.action.SEND')) {
       if (this.notInstalled) return 'Error: Activity not started, unable to resolve Intent';
-      assert.match(cmd, /--eu android\.intent\.extra\.STREAM content:\/\/media\/external\/video\/media\/\d+ --grant-read-uri-permission -p com\.zhiliaoapp\.musically$/);
-      this.screen = 'editor';
+      assert.match(cmd, /--eu android\.intent\.extra\.STREAM content:\/\/media\/external\/video\/media\/\d+ --grant-read-uri-permission -p ([\w.]+)$/);
+      assert.ok(cmd.endsWith(`-p ${this.pkg}`), cmd);
+      this.screen = this.noNext ? 'post' : 'editor';
       return 'Starting: Intent { act=android.intent.action.SEND }';
     }
     const tap = cmd.match(/^input (?:tap|swipe) (\d+) (\d+)/);
@@ -71,13 +72,13 @@ function setup(phones, store = {}) {
   return { engine, data, st };
 }
 
-function tiktok() {
-  const g = TEMPLATES.find((t) => t.publish === 'tiktok').build();
+function tiktok(key = 'tiktok') {
+  const g = TEMPLATES.find((t) => t.publish === key).build();
   for (const n of Object.values(g.drawflow.Home.data)) if (n.name === 'random_wait') Object.assign(n.data, { min: 1, max: 2 });
-  return { id: 'tt', name: 'Publicar clip: TikTok', graph: g };
+  return { id: 'tt', name: `Publicar clip: ${key}`, graph: g };
 }
 
-const until = async (fn, ms = 20000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('tiempo agotado'); await new Promise((r) => setTimeout(r, 10)); } };
+const until = async (fn, ms = 60000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('tiempo agotado'); await new Promise((r) => setTimeout(r, 10)); } };
 
 function clipsDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-'));
@@ -153,5 +154,17 @@ test('publicación programada: espera a su hora y se puede cancelar', async () =
   await until(() => pub.list().find((p) => p.id === a.id).status === 'terminada');
   assert.equal(pub.list().find((p) => p.id === b.id).status, 'cancelada');
   assert.equal(phones.S1.pushed.length, 1);
+  pub.stop();
+});
+
+test('Facebook: comparte el clip, sin botón Siguiente pasa directo a la descripción y publica', async () => {
+  const phones = { S1: new ClipPhone({ pkg: 'com.facebook.katana', noNext: true }), S2: new ClipPhone({ pkg: 'com.facebook.katana', noNext: true, lang: 'en' }) };
+  const { engine, data } = setup(phones);
+  const wf = tiktok('facebook');
+  const pub = new Publisher({ engine, store: { get: (k) => data[k], set: (k, v) => { data[k] = v; } }, getWorkflow: () => wf });
+  pub.create({ workflowId: 'tt', serials: ['S1', 'S2'], clips: mediaInFolder(clipsDir()), captions: ['Clip para Facebook #reels'] });
+  await until(() => pub.list()[0].status === 'terminada', 60000);
+  assert.deepEqual(pub.list()[0].items.map((i) => i.status), ['ok', 'ok']);
+  assert.deepEqual(Object.values(phones).map((p) => [p.screen, p.typed]), [['publicado', 'Clip para Facebook #reels'], ['publicado', 'Clip para Facebook #reels']]);
   pub.stop();
 });

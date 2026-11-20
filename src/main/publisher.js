@@ -66,7 +66,7 @@ export class Publisher extends EventEmitter {
     this.save([post, ...this.list()]);
     if (post.status === 'pendiente') this.launch(post.id);
     this.arm();
-    return post;
+    return this.list().find((p) => p.id === post.id) || post;
   }
 
   /** Variables que recibe el flujo en cada teléfono. */

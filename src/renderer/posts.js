@@ -13,7 +13,7 @@ const STATUS = {
 const ITEM = { ok: 'ok', error: 'error', ejecutando: 'warn', 'en cola': '', pendiente: '', detenido: 'error', cancelado: '', interrumpido: 'error' };
 
 /** Los flujos de publicación se reconocen por el nodo "Compartir vídeo/foto a app". */
-const isPublishFlow = (wf) => JSON.stringify(wf.graph || {}).includes('"name":"share_media"');
+export const isPublishFlow = (wf) => JSON.stringify(wf.graph || {}).includes('"name":"share_media"');
 
 function renderFlows() {
   const sel = $('#pbFlow');
@@ -21,7 +21,7 @@ function renderFlows() {
   const flows = state.workflows.filter(isPublishFlow);
   sel.innerHTML = flows.length
     ? flows.map((w) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')
-    : '<option value="">Primero pulsa "Crear flujos TikTok / Shorts / Reels"</option>';
+    : '<option value="">Primero pulsa "Crear flujos TikTok / Shorts / Reels / Facebook"</option>';
   if (flows.some((w) => w.id === cur)) sel.value = cur;
 }
 
@@ -35,27 +35,47 @@ function renderClips() {
   });
 }
 
-function selectedPhones() {
-  return [...$('#pbDevices').querySelectorAll('input:checked')].map((i) => i.value);
+/**
+ * Lista de teléfonos con casillas, botón "Todos" y selector de grupo (la usan Publicaciones y Calentamiento).
+ * Devuelve { render, selected }.
+ */
+export function phonePicker({ box, group, all, count, onChange = () => {} }) {
+  const selected = () => [...$(box).querySelectorAll('input:checked')].map((i) => i.value);
+  const changed = () => { if (count) $(count).textContent = selected().length ? `(${selected().length})` : ''; onChange(); };
+  const render = () => {
+    const ready = state.devices.filter((d) => d.state === 'device');
+    const checked = new Set(selected());
+    $(box).innerHTML = ready.length
+      ? ready.map((d) => `<label><input type="checkbox" value="${esc(d.serial)}" ${checked.has(d.serial) ? 'checked' : ''}/> ${esc(deviceName(d.serial))}</label>`).join('')
+      : '<span class="muted small">No hay teléfonos conectados</span>';
+    $(box).querySelectorAll('input').forEach((i) => (i.onchange = changed));
+    const groups = [...new Set(Object.values(state.deviceMeta).map((m) => m.group).filter(Boolean))].sort();
+    $(group).innerHTML = `<option value="">Elegir grupo…</option>${groups.map((g) => `<option>${esc(g)}</option>`).join('')}`;
+    changed();
+  };
+  $(all).onclick = () => {
+    const boxes = [...$(box).querySelectorAll('input')];
+    const on = !boxes.every((b) => b.checked);
+    boxes.forEach((b) => (b.checked = on));
+    changed();
+  };
+  $(group).onchange = (e) => {
+    const g = e.target.value;
+    if (!g) return;
+    $(box).querySelectorAll('input').forEach((b) => (b.checked = state.deviceMeta[b.value]?.group === g));
+    e.target.value = '';
+    changed();
+  };
+  return { render, selected };
 }
 
-export function renderPhones() {
-  const box = $('#pbDevices');
-  const ready = state.devices.filter((d) => d.state === 'device');
-  const checked = new Set(selectedPhones());
-  box.innerHTML = ready.length
-    ? ready.map((d) => `<label><input type="checkbox" value="${esc(d.serial)}" ${checked.has(d.serial) ? 'checked' : ''}/> ${esc(deviceName(d.serial))}</label>`).join('')
-    : '<span class="muted small">No hay teléfonos conectados</span>';
-  box.querySelectorAll('input').forEach((i) => (i.onchange = renderPreview));
-  const groups = [...new Set(Object.values(state.deviceMeta).map((m) => m.group).filter(Boolean))].sort();
-  $('#pbGroup').innerHTML = `<option value="">Elegir grupo…</option>${groups.map((g) => `<option>${esc(g)}</option>`).join('')}`;
-  renderPreview();
-}
+let phones;
+const selectedPhones = () => phones.selected();
+export const renderPhones = () => phones.render();
 
 /** Misma regla de reparto que el proceso principal: así se ve antes de publicar qué sube cada uno. */
 function renderPreview() {
   const serials = selectedPhones();
-  $('#pbDevCount').textContent = serials.length ? `(${serials.length})` : '';
   const caps = $('#pbCaptions').value.split('\n').map((c) => c.trim()).filter(Boolean);
   const mode = $('#pbMode').value;
   if (!serials.length || !clips.length) { $('#pbPreview').innerHTML = ''; return; }
@@ -107,7 +127,7 @@ async function createFlows() {
   const have = new Set(state.workflows.map((w) => w.name));
   const missing = tpls.filter((t) => !have.has(t.name));
   if (!missing.length) {
-    const ok = await modal({ title: 'Flujos de publicación', html: '<p>Ya tienes los tres flujos. ¿Quieres volver a crearlos? Se añaden como copias nuevas; tus cambios en los actuales se conservan.</p>', okText: 'Crear de nuevo' });
+    const ok = await modal({ title: 'Flujos de publicación', html: '<p>Ya tienes los flujos de publicación. ¿Quieres volver a crearlos? Se añaden como copias nuevas; tus cambios en los actuales se conservan.</p>', okText: 'Crear de nuevo' });
     if (!ok) return;
   }
   for (const t of missing.length ? missing : tpls) {
@@ -119,6 +139,7 @@ async function createFlows() {
 }
 
 export function initPosts() {
+  phones = phonePicker({ box: '#pbDevices', group: '#pbGroup', all: '#pbAll', count: '#pbDevCount', onChange: renderPreview });
   window.addEventListener('view', (e) => { if (e.detail === 'posts') { renderFlows(); renderPhones(); renderClips(); renderPosts(); } });
   $('#pbFlows').onclick = () => createFlows().catch((e) => toast(errText(e), 'error'));
   $('#pbAddFiles').onclick = async () => { clips.push(...(await call('pickMedia', false)).filter((f) => !clips.includes(f))); renderClips(); renderPreview(); };
@@ -131,19 +152,6 @@ export function initPosts() {
   };
   $('#pbCaptions').oninput = renderPreview;
   $('#pbMode').onchange = renderPreview;
-  $('#pbAll').onclick = () => {
-    const boxes = [...$('#pbDevices').querySelectorAll('input')];
-    const all = boxes.every((b) => b.checked);
-    boxes.forEach((b) => (b.checked = !all));
-    renderPreview();
-  };
-  $('#pbGroup').onchange = (e) => {
-    const g = e.target.value;
-    if (!g) return;
-    $('#pbDevices').querySelectorAll('input').forEach((b) => (b.checked = state.deviceMeta[b.value]?.group === g));
-    e.target.value = '';
-    renderPreview();
-  };
   $('#pbStart').onclick = async () => {
     const at = $('#pbAt').value ? new Date($('#pbAt').value).getTime() : null;
     if (at && at < Date.now() - 60000) return toast('Esa hora ya ha pasado', 'warn');

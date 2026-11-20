@@ -244,7 +244,7 @@ const anyText = (...words) => `//*[${words.flatMap((w) => [`@text="${w}"`, `@con
  * Flujo de publicación: comparte {clip} con la app, pulsa Siguiente (una o dos veces), escribe {descripcion}
  * y pulsa Publicar. Los XPath van en variables al principio para ajustarlos con el Inspector.
  */
-function publishFlow({ pkg, xpAntes = '', xpSiguiente, xpDescripcion, xpPublicar }) {
+function publishFlow({ pkg, xpAntes = '', xpSiguiente, xpDescripcion, xpPublicar, nextRequired = true }) {
   const nodes = [];
   const N = {};
   const add = (key, type, params = {}) => { N[key] = nodes.length; nodes.push({ type, params }); };
@@ -260,7 +260,7 @@ function publishFlow({ pkg, xpAntes = '', xpSiguiente, xpDescripcion, xpPublicar
   add('hayAntes', 'if_var', { name: 'xp_antes', op: '==', value: '' });
   add('antes', 'tap_xpath', { xpath: '{xp_antes}', timeout: 10000 });
   add('w2', 'random_wait', { min: 3000, max: 5000 });
-  add('sig1', 'tap_xpath', { xpath: '{xp_siguiente}', timeout: 20000 });
+  add('sig1', 'tap_xpath', { xpath: '{xp_siguiente}', timeout: nextRequired ? 20000 : 8000 });
   add('w3', 'random_wait', { min: 2500, max: 4000 });
   add('otroSig', 'if_xpath', { xpath: '{xp_siguiente}', timeout: 3000 });
   add('sig2', 'tap_xpath', { xpath: '{xp_siguiente}', timeout: 3000 });
@@ -284,7 +284,7 @@ function publishFlow({ pkg, xpAntes = '', xpSiguiente, xpDescripcion, xpPublicar
     ...chain('start', 'xa', 'xs', 'xd', 'xp', 'wake', 'cerrar', 'compartir', 'w1', 'hayAntes'),
     L('compartir', 1, 'captura'),
     L('hayAntes', 0, 'sig1'), L('hayAntes', 1, 'antes'), L('antes', 0, 'w2'), L('antes', 1, 'sig1'), L('w2', 0, 'sig1'),
-    L('sig1', 0, 'w3'), L('sig1', 1, 'captura'), L('w3', 0, 'otroSig'),
+    L('sig1', 0, 'w3'), L('sig1', 1, nextRequired ? 'captura' : 'sinDesc'), L('w3', 0, 'otroSig'),
     L('otroSig', 0, 'sig2'), L('otroSig', 1, 'sinDesc'), L('sig2', 0, 'w4'), L('sig2', 1, 'sinDesc'), L('w4', 0, 'sinDesc'),
     L('sinDesc', 0, 'publicar'), L('sinDesc', 1, 'campo'),
     L('campo', 0, 'escribir'), L('campo', 1, 'noCampo'), L('noCampo', 0, 'publicar'),
@@ -306,10 +306,101 @@ export const PUBLISH_PLATFORMS = [
     description: 'Comparte {clip} con Instagram, elige Reels, pulsa Siguiente, escribe {descripcion} y pulsa Compartir.',
     xp: { xpAntes: anyText('Reels', 'Reel'), xpSiguiente: anyText('Siguiente', 'Next'), xpDescripcion: '(//android.widget.EditText)[1]',
       xpPublicar: anyText('Compartir', 'Share') } },
+  { key: 'facebook', name: 'Publicar clip: Facebook', pkg: 'com.facebook.katana',
+    description: 'Comparte {clip} con Facebook, pulsa Siguiente si aparece, escribe {descripcion} y pulsa Publicar.',
+    xp: { xpSiguiente: anyText('Siguiente', 'Next'), xpDescripcion: '(//android.widget.EditText)[1]',
+      xpPublicar: anyText('Publicar', 'Post', 'Compartir ahora', 'Share now', 'Compartir', 'Share'), nextRequired: false } },
 ];
+
+/**
+ * Calentamiento: abre la app, busca {tema}, abre el primer vídeo de los resultados y pasa al siguiente
+ * cada {ms_min}-{ms_max} ms hasta ver {videos}. Solo mira: no da me gusta, no comenta ni sigue.
+ * Con deepLink la búsqueda se abre por enlace (YouTube); si no, con el buscador de la app.
+ */
+function warmFlow({ pkg, name, deepLink = '', xpBuscar = '', xpCampo, xpPestana = '', xpPrimero, primeroX = '25%', primeroY = '40%' }) {
+  const nodes = [];
+  const N = {};
+  const add = (key, type, params = {}) => { N[key] = nodes.length; nodes.push({ type, params }); };
+  add('start', 'start');
+  add('xb', 'set_var', { name: 'xp_buscar', value: xpBuscar });
+  add('xc', 'set_var', { name: 'xp_campo', value: xpCampo });
+  add('xt', 'set_var', { name: 'xp_pestana', value: xpPestana });
+  add('xf', 'set_var', { name: 'xp_primero', value: xpPrimero });
+  add('px', 'set_var', { name: 'primero_x', value: primeroX });
+  add('py', 'set_var', { name: 'primero_y', value: primeroY });
+  add('vistos', 'set_var', { name: 'vistos', value: '0' });
+  add('wake', 'wake_unlock');
+  add('cerrar', 'stop_app', { package: pkg });
+  if (deepLink) add('abrir', 'shell', { command: `am start -a android.intent.action.VIEW -d '${deepLink}' -p ${pkg}`, var: '' });
+  else add('abrir', 'open_app', { package: pkg });
+  add('w1', 'random_wait', { min: 5000, max: 8000 });
+  if (!deepLink) {
+    add('buscar', 'tap_xpath', { xpath: '{xp_buscar}', timeout: 10000 });
+    add('w2', 'random_wait', { min: 1500, max: 2500 });
+    add('campo', 'tap_xpath', { xpath: '{xp_campo}', timeout: 5000 });
+    add('escribir', 'type_text', { text: '{tema}', humanize: true });
+    add('enter', 'key', { key: 'ENTER' });
+    add('w3', 'random_wait', { min: 4000, max: 6000 });
+  }
+  add('hayPestana', 'if_var', { name: 'xp_pestana', op: '==', value: '' });
+  add('pestana', 'tap_xpath', { xpath: '{xp_pestana}', timeout: 6000 });
+  add('w4', 'random_wait', { min: 2500, max: 4000 });
+  add('hayPrimero', 'if_var', { name: 'xp_primero', op: '==', value: '' });
+  add('primero', 'tap_xpath', { xpath: '{xp_primero}', timeout: 6000 });
+  add('primeroPunto', 'tap', { x: '{primero_x}', y: '{primero_y}', jitter: 6 });
+  add('w5', 'random_wait', { min: 3000, max: 5000 });
+  add('loop', 'loop', { times: '{videos}' });
+  add('mirar', 'random_wait', { min: '{ms_min}', max: '{ms_max}' });
+  add('contar', 'math_var', { name: 'vistos', op: '+', value: '1' });
+  add('siguiente', 'swipe', { x1: '50%', y1: '78%', x2: '50%', y2: '22%', ms: 350, humanize: false });
+  add('w6', 'random_wait', { min: 1500, max: 3000 });
+  add('fin', 'log', { message: `{device.name}: {vistos} vídeos de «{tema}» en ${name}` });
+  add('inicio', 'key', { key: 'HOME' });
+  if (!deepLink) {
+    add('sinBuscador', 'screenshot', { name: `calentar_${name}_{device.name}_{timestamp}` });
+    add('fallo', 'fail', { message: `No encontré el buscador de ${name} en {device.name} (ajusta xp_buscar con el Inspector)` });
+  }
+  const L = (a, out, b) => [N[a], out, N[b]];
+  const chain = (...keys) => keys.slice(1).map((k, i) => L(keys[i], 0, k));
+  const links = [
+    ...chain('start', 'xb', 'xc', 'xt', 'xf', 'px', 'py', 'vistos', 'wake', 'cerrar', 'abrir', 'w1'),
+    L('hayPestana', 0, 'w4'), L('hayPestana', 1, 'pestana'), L('pestana', 0, 'w4'), L('pestana', 1, 'w4'),
+    L('w4', 0, 'hayPrimero'), L('hayPrimero', 0, 'primeroPunto'), L('hayPrimero', 1, 'primero'), L('primero', 0, 'w5'), L('primero', 1, 'primeroPunto'), L('primeroPunto', 0, 'w5'),
+    L('w5', 0, 'loop'), L('loop', 0, 'mirar'), L('loop', 1, 'fin'),
+    ...chain('mirar', 'contar', 'siguiente', 'w6', 'loop'),
+    L('fin', 0, 'inicio'),
+  ];
+  if (deepLink) links.push(L('w1', 0, 'hayPestana'));
+  else {
+    links.push(L('w1', 0, 'buscar'), L('buscar', 0, 'w2'), L('buscar', 1, 'sinBuscador'), L('sinBuscador', 0, 'fallo'), L('w2', 0, 'campo'),
+      L('campo', 0, 'escribir'), L('campo', 1, 'escribir'), ...chain('escribir', 'enter', 'w3', 'hayPestana'));
+  }
+  return buildGraph(nodes.map((n, i) => ({ ...n, x: (i % 7) * 215, y: Math.floor(i / 7) * 280 })), links);
+}
+
+export const WARM_PLATFORMS = [
+  { key: 'tiktok', name: 'Calentar: TikTok', app: 'TikTok', pkg: 'com.zhiliaoapp.musically',
+    xp: { xpBuscar: anyText('Buscar', 'Search'), xpCampo: '//android.widget.EditText', xpPestana: anyText('Vídeos', 'Videos'),
+      xpPrimero: '', primeroX: '25%', primeroY: '35%' } },
+  { key: 'youtube', name: 'Calentar: YouTube Shorts', app: 'YouTube', pkg: 'com.google.android.youtube',
+    xp: { deepLink: 'https://www.youtube.com/results?search_query={tema_url}', xpCampo: '', xpPestana: anyText('Shorts'),
+      xpPrimero: '', primeroX: '25%', primeroY: '40%' } },
+  { key: 'instagram', name: 'Calentar: Instagram Reels', app: 'Instagram', pkg: 'com.instagram.android',
+    xp: { xpBuscar: anyText('Buscar y explorar', 'Search and explore', 'Buscar', 'Search'), xpCampo: '//android.widget.EditText',
+      xpPestana: anyText('Reels'), xpPrimero: '', primeroX: '17%', primeroY: '35%' } },
+  { key: 'facebook', name: 'Calentar: Facebook', app: 'Facebook', pkg: 'com.facebook.katana',
+    xp: { xpBuscar: anyText('Buscar', 'Search', 'Buscar en Facebook', 'Search Facebook'), xpCampo: '//android.widget.EditText',
+      xpPestana: anyText('Reels', 'Vídeos', 'Videos'), xpPrimero: '', primeroX: '25%', primeroY: '40%' } },
+];
+
+function warmTemplates() {
+  return WARM_PLATFORMS.map((p) => ({ name: p.name, warm: p.key,
+    description: `Abre ${p.app}, busca {tema}, abre el primer vídeo de los resultados y pasa al siguiente cada cierto tiempo. Para usarlo desde Calentamiento.`,
+    build: () => warmFlow({ pkg: p.pkg, name: p.app, ...p.xp }) }));
+}
 
 function publishTemplates() {
   return PUBLISH_PLATFORMS.map((p) => ({ name: p.name, description: p.description, publish: p.key, build: () => publishFlow({ pkg: p.pkg, ...p.xp }) }));
 }
 
-TEMPLATES.push(...publishTemplates());
+TEMPLATES.push(...publishTemplates(), ...warmTemplates());

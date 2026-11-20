@@ -3,6 +3,7 @@ import { state, api, $, $$, esc, toast, reloadState, switchView, hydrateIcons } 
 import { initDevices, renderDevices, onStreamState } from './devices.js';
 import { initAiTest, onAiEvent } from './aitest.js';
 import { initPosts, onPosts, renderPhones as renderPostPhones } from './posts.js';
+import { initWarm, onWarmups, renderWarmPhones } from './warm.js';
 import { initEditor, highlightRuns } from './editor.js';
 import { initViews, renderRuns, appendLog, renderSchedules, renderTables, renderSettings, renderHistory } from './views.js';
 import { initProxies, renderProxies } from './proxies.js';
@@ -71,6 +72,7 @@ async function main() {
   initProxies();
   initAiTest();
   initPosts();
+  initWarm();
   renderDevices();
   renderSideStatus();
   renderRuns();
@@ -88,6 +90,7 @@ async function main() {
       renderSideStatus();
       if (state.view === 'proxies') renderProxies();
       if (state.view === 'posts') renderPostPhones();
+      if (state.view === 'warm') renderWarmPhones();
     } else if (type === 'runs') {
       state.runs = payload;
       renderRuns();
@@ -98,6 +101,7 @@ async function main() {
     else if (type === 'streamState') onStreamState(payload);
     else if (type === 'aiTest') onAiEvent(payload);
     else if (type === 'posts') onPosts(payload);
+    else if (type === 'warmups') onWarmups(payload);
     else if (type === 'toast') toast(payload.message, payload.level);
     else if (type === 'health') { state.health = payload; renderDevices(); }
     else if (type === 'progress') {
