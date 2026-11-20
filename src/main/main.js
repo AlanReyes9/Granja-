@@ -490,6 +490,13 @@ const handlers = {
     return engine.start(wf, serials, { concurrency: opts.concurrency ?? s.runConcurrency, staggerMs: opts.staggerMs ?? s.runStaggerMs });
   },
   stopRun: (id) => engine.stop(id),
+  /** Lanza un flujo con variables propias de cada teléfono (nombre, bio, cuenta destino...). */
+  runWithVars: (id, serials, varsBySerial = {}) => {
+    const wf = store.get('workflows').find((w) => w.id === id);
+    if (!wf) throw new Error('Flujo no encontrado');
+    const s = settings();
+    return engine.start(wf, serials, { concurrency: s.runConcurrency, staggerMs: s.runStaggerMs, varsBySerial, source: 'automatizar' });
+  },
   // ---------- Publicaciones en lote ----------
   posts: () => publisher.list(),
   postCreate: (opts) => publisher.create(opts),

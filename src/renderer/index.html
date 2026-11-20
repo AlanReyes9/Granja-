@@ -47,6 +47,7 @@
           <div class="tabs" id="ccTabs">
             <button data-tab="general" class="active">General</button>
             <button data-tab="auto">Automatizar</button>
+            <button data-tab="adb">ADB</button>
             <button data-tab="screen">Pantalla</button>
             <button data-tab="otg">OTG</button>
             <button class="collapse icon-only ghost" id="ccCollapse" title="Contraer panel"><i data-icon="chevron-left"></i></button>
@@ -54,6 +55,7 @@
           <div class="cc-rail">
             <button class="ghost icon-only" data-open="general" title="General"><i data-icon="grid"></i></button>
             <button class="ghost icon-only" data-open="auto" title="Automatizar"><i data-icon="bolt"></i></button>
+            <button class="ghost icon-only" data-open="adb" title="Comandos ADB"><i data-icon="terminal"></i></button>
             <button class="ghost icon-only" data-open="screen" title="Pantalla"><i data-icon="monitor"></i></button>
             <button class="ghost icon-only" data-open="otg" title="OTG"><i data-icon="usb"></i></button>
             <button class="ghost icon-only" data-open="groups" title="Grupos"><i data-icon="layers"></i></button>
@@ -78,6 +80,12 @@
           <div class="cc-tab hidden" data-tab="auto">
             <div class="plat-tabs" id="autoPlatforms"></div>
             <div id="autoActions" class="auto-actions"></div>
+          </div>
+          <div class="cc-tab hidden" data-tab="adb">
+            <div id="adbQuick" class="adb-quick"></div>
+            <div class="section-title">Comando</div>
+            <textarea id="adbCmd" class="mono" rows="3" spellcheck="false" placeholder="getprop ro.product.model"></textarea>
+            <button id="adbRun" class="primary wide"><i data-icon="terminal"></i>Ejecutar en los seleccionados</button>
           </div>
           <div class="cc-tab hidden" data-tab="screen">
             <label class="slider"><span>Vista grande</span><input type="range" id="bigSize" min="420" max="900" step="10" /></label>

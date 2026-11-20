@@ -534,4 +534,251 @@ const popupTemplate = {
   ], [[0, 0, 1], [1, 0, 2], [2, 0, 3], [3, 0, 4], [3, 1, 7], [4, 0, 5], [4, 1, 7], [5, 0, 6], [6, 0, 3]]),
 };
 
-TEMPLATES.push(...publishTemplates(), ...warmTemplates(), ...loginTemplates(), popupTemplate);
+/** Pequeño constructor de flujos con nodos con nombre: add(clave, tipo, params) y enlaces [desde, salida, hasta]. */
+function named(build) {
+  const nodes = [];
+  const N = {};
+  const add = (k, type, params = {}) => { N[k] = nodes.length; nodes.push({ type, params }); };
+  const links = [];
+  const L = (a, out, b) => links.push([N[a], out, N[b]]);
+  const chain = (...keys) => keys.slice(1).forEach((k, i) => L(keys[i], 0, k));
+  build({ add, L, chain });
+  return buildGraph(nodes.map((n, i) => ({ ...n, x: (i % 8) * 215, y: Math.floor(i / 8) * 280 })), links);
+}
+
+/** Borra el texto del campo con el foco: va al final y pulsa "borrar" muchas veces. */
+const CLEAR_FIELD = `input keyevent 123; input keyevent ${Array(80).fill(67).join(' ')}`;
+
+/** Variables xp_* al principio del flujo (para ajustarlas con el Inspector). */
+function setVars(add, chain, vars, after) {
+  const keys = Object.entries(vars).map(([name, value]) => { add(`v_${name}`, 'set_var', { name, value }); return `v_${name}`; });
+  chain(after, ...keys);
+  return keys.at(-1);
+}
+
+/**
+ * Completar perfil: Perfil -> Editar perfil -> nombre -> biografía -> foto (desde la galería).
+ * Variables por teléfono: {nombre}, {bio}, {foto} (ruta en el PC; vacías = no se cambian).
+ */
+function profileFlow({ key, pkg, xpPerfil, xpEditar, xpNombre, xpBio, xpGuardar, xpFoto, xpGaleria = '', fotoX = '17%', fotoY = '30%', xpListo }) {
+  return named(({ add, L, chain }) => {
+    add('start', 'start');
+    const last = setVars(add, chain, { perfil_plataforma: key, xp_perfil: xpPerfil, xp_editar: xpEditar, xp_nombre: xpNombre, xp_bio: xpBio,
+      xp_guardar: xpGuardar, xp_foto: xpFoto, xp_galeria: xpGaleria, foto_x: fotoX, foto_y: fotoY, xp_listo: xpListo }, 'start');
+    add('wake', 'wake_unlock'); add('cerrar', 'stop_app', { package: pkg }); add('abrir', 'open_app', { package: pkg });
+    add('w1', 'random_wait', { min: 5000, max: 8000 });
+    add('perfil', 'tap_xpath', { xpath: '{xp_perfil}', timeout: 10000 });
+    add('w2', 'random_wait', { min: 2500, max: 4000 });
+    add('editar', 'tap_xpath', { xpath: '{xp_editar}', timeout: 10000 });
+    add('w3', 'random_wait', { min: 2500, max: 4000 });
+    // Un campo: tocar su etiqueta, enfocar el cuadro de texto, borrar, escribir y guardar.
+    const field = (k, varName, xpVar) => {
+      add(`${k}Si`, 'if_var', { name: varName, op: '==', value: '' });
+      add(`${k}Tap`, 'tap_xpath', { xpath: `{${xpVar}}`, timeout: 6000 });
+      add(`${k}W`, 'random_wait', { min: 2000, max: 3000 });
+      add(`${k}Foco`, 'tap_xpath', { xpath: '//android.widget.EditText', timeout: 4000 });
+      add(`${k}Borrar`, 'shell', { command: CLEAR_FIELD, var: '' });
+      add(`${k}Esc`, 'type_text', { text: `{${varName}}`, humanize: false });
+      add(`${k}W2`, 'random_wait', { min: 800, max: 1500 });
+      add(`${k}Guardar`, 'tap_xpath', { xpath: '{xp_guardar}', timeout: 4000 });
+      add(`${k}Atras`, 'key', { key: 'BACK' });
+      add(`${k}W3`, 'random_wait', { min: 2000, max: 3000 });
+      add(`${k}No`, 'log', { message: `{device.name}: no encontré el campo (${varName}); se salta` });
+    };
+    field('nom', 'nombre', 'xp_nombre');
+    field('bio', 'bio', 'xp_bio');
+    add('fotoSi', 'if_var', { name: 'foto', op: '==', value: '' });
+    add('subir', 'push_file', { local: '{foto}', remote: '/sdcard/DCIM/NexusFarmer/', scan: true });
+    add('wf1', 'random_wait', { min: 2500, max: 4000 });
+    add('cambiar', 'tap_xpath', { xpath: '{xp_foto}', timeout: 6000 });
+    add('wf2', 'random_wait', { min: 2000, max: 3000 });
+    add('galSi', 'if_var', { name: 'xp_galeria', op: '==', value: '' });
+    add('galeria', 'tap_xpath', { xpath: '{xp_galeria}', timeout: 5000 });
+    add('wf3', 'random_wait', { min: 3000, max: 4500 });
+    add('imagen', 'tap', { x: '{foto_x}', y: '{foto_y}', jitter: 4 });
+    add('wf4', 'random_wait', { min: 2500, max: 4000 });
+    add('listo1', 'tap_xpath', { xpath: '{xp_listo}', timeout: 5000 });
+    add('wf5', 'random_wait', { min: 2500, max: 4000 });
+    add('listo2', 'tap_xpath', { xpath: '{xp_listo}', timeout: 4000 });
+    add('wf6', 'random_wait', { min: 3000, max: 5000 });
+    add('noFoto', 'log', { message: '{device.name}: no encontré "Cambiar foto"; la foto no se cambió' });
+    add('ok', 'log', { message: '{device.name}: perfil actualizado' });
+    add('inicio', 'key', { key: 'HOME' });
+    add('m1', 'set_var', { name: 'motivo', value: 'No encontré el perfil o "Editar perfil" (ajusta xp_perfil / xp_editar)' });
+    add('captura', 'screenshot', { name: `perfil_${key}_{device.name}_{timestamp}` });
+    add('fallo', 'fail', { message: '{motivo}' });
+    chain(last, 'wake', 'cerrar', 'abrir', 'w1', 'perfil'); L('perfil', 0, 'w2'); L('perfil', 1, 'm1');
+    chain('w2', 'editar'); L('editar', 0, 'w3'); L('editar', 1, 'm1'); chain('w3', 'nomSi');
+    for (const [k, next] of [['nom', 'bioSi'], ['bio', 'fotoSi']]) {
+      L(`${k}Si`, 0, next); L(`${k}Si`, 1, `${k}Tap`); L(`${k}Tap`, 0, `${k}W`); L(`${k}Tap`, 1, `${k}No`); L(`${k}No`, 0, next);
+      chain(`${k}W`, `${k}Foco`); L(`${k}Foco`, 0, `${k}Borrar`); L(`${k}Foco`, 1, `${k}Borrar`); chain(`${k}Borrar`, `${k}Esc`, `${k}W2`, `${k}Guardar`);
+      L(`${k}Guardar`, 0, `${k}W3`); L(`${k}Guardar`, 1, `${k}Atras`); L(`${k}Atras`, 0, `${k}W3`); L(`${k}W3`, 0, next);
+    }
+    L('fotoSi', 0, 'ok'); L('fotoSi', 1, 'subir'); chain('subir', 'wf1', 'cambiar'); L('cambiar', 0, 'wf2'); L('cambiar', 1, 'noFoto'); L('noFoto', 0, 'ok');
+    chain('wf2', 'galSi'); L('galSi', 0, 'wf3'); L('galSi', 1, 'galeria'); L('galeria', 0, 'wf3'); L('galeria', 1, 'wf3');
+    chain('wf3', 'imagen', 'wf4', 'listo1'); L('listo1', 0, 'wf5'); L('listo1', 1, 'ok'); chain('wf5', 'listo2'); L('listo2', 0, 'wf6'); L('listo2', 1, 'ok');
+    chain('wf6', 'ok', 'inicio'); chain('m1', 'captura', 'fallo');
+  });
+}
+
+/**
+ * Privacidad: llega al ajuste de "cuenta privada" (xp_paso1..4) y lo deja como pide {privada} ("sí" o "no").
+ * Lee el interruptor que hay junto a la etiqueta (atributo checked) antes y después de tocarlo.
+ */
+function privacyFlow({ key, pkg, pasos, etiqueta, xpConfirmar }) {
+  const sw = `(${etiqueta}/following::*[@checkable="true"])[1]`;
+  return named(({ add, L, chain }) => {
+    add('start', 'start');
+    const last = setVars(add, chain, { privacidad_plataforma: key, xp_paso1: pasos[0] || '', xp_paso2: pasos[1] || '', xp_paso3: pasos[2] || '',
+      xp_paso4: pasos[3] || '', xp_interruptor: sw, xp_etiqueta: etiqueta, xp_activado: `${sw}[@checked="true"]`, xp_desactivado: `${sw}[@checked="false"]`,
+      xp_confirmar: xpConfirmar }, 'start');
+    add('wake', 'wake_unlock'); add('cerrar', 'stop_app', { package: pkg }); add('abrir', 'open_app', { package: pkg });
+    add('w0', 'random_wait', { min: 5000, max: 8000 });
+    for (let i = 1; i <= 4; i++) {
+      add(`h${i}`, 'if_var', { name: `xp_paso${i}`, op: '==', value: '' });
+      add(`p${i}`, 'tap_xpath', { xpath: `{xp_paso${i}}`, timeout: 8000 });
+      add(`w${i}`, 'random_wait', { min: 2000, max: 3500 });
+    }
+    add('quiere', 'if_var', { name: 'privada', op: '==', value: 'sí' });
+    add('yaOn', 'if_xpath', { xpath: '{xp_activado}', timeout: 6000 });
+    add('yaOff', 'if_xpath', { xpath: '{xp_desactivado}', timeout: 6000 });
+    add('tocar', 'tap_xpath', { xpath: '{xp_interruptor}', timeout: 4000 });
+    add('tocarEtq', 'tap_xpath', { xpath: '{xp_etiqueta}', timeout: 4000 });
+    add('wt', 'random_wait', { min: 2000, max: 3000 });
+    add('confirmar', 'tap_xpath', { xpath: '{xp_confirmar}', timeout: 4000 });
+    add('wc', 'random_wait', { min: 2500, max: 4000 });
+    add('compOn', 'if_var', { name: 'privada', op: '==', value: 'sí' });
+    add('verOn', 'if_xpath', { xpath: '{xp_activado}', timeout: 5000 });
+    add('verOff', 'if_xpath', { xpath: '{xp_desactivado}', timeout: 5000 });
+    add('igual', 'log', { message: '{device.name}: la cuenta ya estaba así (privada: {privada})' });
+    add('ok', 'log', { message: '{device.name}: privacidad cambiada (privada: {privada})' });
+    add('inicio', 'key', { key: 'HOME' });
+    add('m1', 'set_var', { name: 'motivo', value: 'No encontré el ajuste de cuenta privada (ajusta xp_paso1..4 / xp_etiqueta)' });
+    add('m2', 'set_var', { name: 'motivo', value: 'Toqué el ajuste pero no cambió (puede pedir confirmación: ajusta xp_confirmar)' });
+    add('captura', 'screenshot', { name: `privacidad_${key}_{device.name}_{timestamp}` });
+    add('fallo', 'fail', { message: '{motivo}' });
+    for (let i = 1; i <= 4; i++) {
+      const next = i < 4 ? `h${i + 1}` : 'quiere';
+      L(`h${i}`, 0, next); L(`h${i}`, 1, `p${i}`); L(`p${i}`, 0, `w${i}`); L(`p${i}`, 1, next); L(`w${i}`, 0, next);
+    }
+    chain(last, 'wake', 'cerrar', 'abrir', 'w0', 'h1');
+    L('quiere', 0, 'yaOn'); L('quiere', 1, 'yaOff');
+    L('yaOn', 0, 'igual'); L('yaOn', 1, 'tocar'); L('yaOff', 0, 'igual'); L('yaOff', 1, 'tocar');
+    L('tocar', 0, 'wt'); L('tocar', 1, 'tocarEtq'); L('tocarEtq', 0, 'wt'); L('tocarEtq', 1, 'm1');
+    chain('wt', 'confirmar'); L('confirmar', 0, 'wc'); L('confirmar', 1, 'wc'); chain('wc', 'compOn');
+    L('compOn', 0, 'verOn'); L('compOn', 1, 'verOff'); L('verOn', 0, 'ok'); L('verOn', 1, 'm2'); L('verOff', 0, 'ok'); L('verOff', 1, 'm2');
+    L('igual', 0, 'inicio'); L('ok', 0, 'inicio'); chain('m1', 'captura', 'fallo'); chain('m2', 'captura');
+  });
+}
+
+/** Cambiar de cuenta: Perfil -> selector de cuentas -> la cuenta {cuenta_destino} (ya iniciada en el teléfono). */
+function switchFlow({ key, pkg, xpPerfil, xpSelector, selectorX = '40%', selectorY = '6%' }) {
+  return named(({ add, L, chain }) => {
+    add('start', 'start');
+    const last = setVars(add, chain, { cambio_plataforma: key, xp_perfil: xpPerfil, xp_selector: xpSelector, selector_x: selectorX, selector_y: selectorY,
+      xp_cuenta: '//*[@text=$cuenta_destino or @text=$cuenta_arroba or contains(@content-desc,$cuenta_destino)]' }, 'start');
+    add('wake', 'wake_unlock'); add('cerrar', 'stop_app', { package: pkg }); add('abrir', 'open_app', { package: pkg });
+    add('w1', 'random_wait', { min: 5000, max: 8000 });
+    add('perfil', 'tap_xpath', { xpath: '{xp_perfil}', timeout: 10000 });
+    add('w2', 'random_wait', { min: 2500, max: 4000 });
+    add('ya', 'if_xpath', { xpath: '//*[@text=$cuenta_arroba or @text=$cuenta_destino]', timeout: 2000 });
+    add('selector', 'tap_xpath', { xpath: '{xp_selector}', timeout: 6000 });
+    // Si no se reconoce el selector, se toca el nombre de usuario de arriba del perfil.
+    add('selectorPunto', 'tap', { x: '{selector_x}', y: '{selector_y}', jitter: 4 });
+    add('w3', 'random_wait', { min: 2000, max: 3000 });
+    add('cuenta', 'tap_xpath', { xpath: '{xp_cuenta}', timeout: 8000 });
+    add('w4', 'random_wait', { min: 5000, max: 8000 });
+    add('yaEra', 'log', { message: '{device.name}: ya estaba en {cuenta_destino}' });
+    add('ok', 'log', { message: '{device.name}: ahora en la cuenta {cuenta_destino}' });
+    add('inicio', 'key', { key: 'HOME' });
+    add('m1', 'set_var', { name: 'motivo', value: 'No encontré el perfil (ajusta xp_perfil)' });
+    add('m2', 'set_var', { name: 'motivo', value: 'La cuenta {cuenta_destino} no está en este teléfono: inicia sesión en ella primero (o ajusta xp_selector)' });
+    add('captura', 'screenshot', { name: `cambiar_${key}_{device.name}_{timestamp}` });
+    add('fallo', 'fail', { message: '{motivo}' });
+    chain(last, 'wake', 'cerrar', 'abrir', 'w1', 'perfil'); L('perfil', 0, 'w2'); L('perfil', 1, 'm1');
+    chain('w2', 'ya'); L('ya', 0, 'yaEra'); L('ya', 1, 'selector'); L('selector', 0, 'w3'); L('selector', 1, 'selectorPunto'); L('selectorPunto', 0, 'w3');
+    chain('w3', 'cuenta'); L('cuenta', 0, 'w4'); L('cuenta', 1, 'm2'); chain('w4', 'ok', 'inicio'); L('yaEra', 0, 'inicio');
+    chain('m1', 'captura', 'fallo'); chain('m2', 'captura');
+  });
+}
+
+/** Borrar publicación: abre la más reciente del perfil, menú "Más" -> Eliminar -> confirmar; {cuantas} veces. */
+function deleteFlow({ key, pkg, xpPerfil, primeraX = '17%', primeraY = '62%', xpMas, xpEliminar }) {
+  return named(({ add, L, chain }) => {
+    add('start', 'start');
+    const last = setVars(add, chain, { borrar_plataforma: key, xp_perfil: xpPerfil, primera_x: primeraX, primera_y: primeraY, xp_mas: xpMas,
+      xp_eliminar: xpEliminar, borradas: '0' }, 'start');
+    add('wake', 'wake_unlock'); add('cerrar', 'stop_app', { package: pkg }); add('abrir', 'open_app', { package: pkg });
+    add('w1', 'random_wait', { min: 5000, max: 8000 });
+    add('loop', 'loop', { times: '{cuantas}' });
+    add('perfil', 'tap_xpath', { xpath: '{xp_perfil}', timeout: 10000 });
+    add('w2', 'random_wait', { min: 3000, max: 4500 });
+    add('primera', 'tap', { x: '{primera_x}', y: '{primera_y}', jitter: 4 });
+    add('w3', 'random_wait', { min: 3000, max: 4500 });
+    add('mas', 'tap_xpath', { xpath: '{xp_mas}', timeout: 8000 });
+    add('w4', 'random_wait', { min: 1500, max: 2500 });
+    add('eliminar', 'tap_xpath', { xpath: '{xp_eliminar}', timeout: 6000 });
+    add('w5', 'random_wait', { min: 1500, max: 2500 });
+    add('confirmar', 'tap_xpath', { xpath: '{xp_eliminar}', timeout: 5000 });
+    add('w6', 'random_wait', { min: 3000, max: 5000 });
+    add('contar', 'math_var', { name: 'borradas', op: '+', value: '1' });
+    add('fin', 'log', { message: '{device.name}: {borradas} publicación(es) borrada(s)' });
+    add('inicio', 'key', { key: 'HOME' });
+    add('m1', 'set_var', { name: 'motivo', value: 'No encontré el menú o "Eliminar" de la publicación (ajusta xp_mas / xp_eliminar)' });
+    add('captura', 'screenshot', { name: `borrar_${key}_{device.name}_{timestamp}` });
+    add('fallo', 'fail', { message: '{motivo}' });
+    chain(last, 'wake', 'cerrar', 'abrir', 'w1', 'loop'); L('loop', 0, 'perfil'); L('loop', 1, 'fin');
+    L('perfil', 0, 'w2'); L('perfil', 1, 'm1'); chain('w2', 'primera', 'w3', 'mas'); L('mas', 0, 'w4'); L('mas', 1, 'm1');
+    chain('w4', 'eliminar'); L('eliminar', 0, 'w5'); L('eliminar', 1, 'm1'); chain('w5', 'confirmar');
+    L('confirmar', 0, 'w6'); L('confirmar', 1, 'w6'); chain('w6', 'contar', 'loop'); L('fin', 0, 'inicio'); chain('m1', 'captura', 'fallo');
+  });
+}
+
+const PERFIL = { tiktok: anyText('Perfil', 'Profile'), instagram: anyText('Perfil', 'Profile', 'Tu perfil', 'Your profile'),
+  facebook: '//*[contains(@content-desc,"Perfil") or contains(@content-desc,"Profile") or contains(@content-desc,"Menú") or contains(@content-desc,"Menu")]' };
+
+export const ACCOUNT_TOOLS = {
+  profile: {
+    tiktok: { pkg: 'com.zhiliaoapp.musically', xp: { xpPerfil: PERFIL.tiktok, xpEditar: anyText('Editar perfil', 'Edit profile'), xpNombre: anyText('Nombre', 'Name'),
+      xpBio: anyText('Biografía', 'Bio'), xpGuardar: anyText('Guardar', 'Save'), xpFoto: anyText('Cambiar foto', 'Change photo'),
+      xpGaleria: anyText('Seleccionar de la galería', 'Select from gallery', 'Subir foto', 'Upload photo'), xpListo: anyText('Guardar', 'Save', 'Confirmar', 'Confirm', 'Listo', 'Done') } },
+    instagram: { pkg: 'com.instagram.android', xp: { xpPerfil: PERFIL.instagram, xpEditar: anyText('Editar perfil', 'Edit profile'), xpNombre: anyText('Nombre', 'Name'),
+      xpBio: anyText('Presentación', 'Bio', 'Biografía'), xpGuardar: anyText('Listo', 'Done', 'Guardar', 'Save'), xpFoto: anyText('Editar foto o avatar', 'Edit picture or avatar', 'Cambiar foto del perfil', 'Change profile photo'),
+      xpGaleria: anyText('Nueva foto del perfil', 'New profile picture', 'Elegir de la galería', 'Choose from library'), xpListo: anyText('Siguiente', 'Next', 'Listo', 'Done', 'Guardar', 'Save') } },
+    facebook: { pkg: 'com.facebook.katana', xp: { xpPerfil: PERFIL.facebook, xpEditar: anyText('Editar perfil', 'Edit profile'), xpNombre: '',
+      xpBio: anyText('Presentación', 'Bio', 'Agregar presentación', 'Add bio'), xpGuardar: anyText('Guardar', 'Save'), xpFoto: anyText('Editar foto del perfil', 'Edit profile picture', 'Editar', 'Edit'),
+      xpGaleria: anyText('Seleccionar foto del perfil', 'Select profile picture', 'Subir foto', 'Upload photo'), xpListo: anyText('Guardar', 'Save', 'Listo', 'Done') } },
+  },
+  privacy: {
+    tiktok: { pkg: 'com.zhiliaoapp.musically', xp: { pasos: [PERFIL.tiktok, '//*[contains(@content-desc,"Menú del perfil") or contains(@content-desc,"Profile menu") or @content-desc="Menú" or @content-desc="Menu"]',
+      anyText('Ajustes y privacidad', 'Settings and privacy'), anyText('Privacidad', 'Privacy')],
+      etiqueta: anyText('Cuenta privada', 'Private account'), xpConfirmar: anyText('Cambiar a privada', 'Switch to private', 'Cambiar a pública', 'Switch to public', 'Confirmar', 'Confirm') } },
+    instagram: { pkg: 'com.instagram.android', xp: { pasos: [PERFIL.instagram, '//*[@content-desc="Opciones" or @content-desc="Options" or @content-desc="Menú" or @content-desc="Menu"]',
+      anyText('Privacidad de la cuenta', 'Account privacy'), ''],
+      etiqueta: anyText('Cuenta privada', 'Private account'), xpConfirmar: anyText('Cambiar a privada', 'Switch to private', 'Cambiar a pública', 'Switch to public') } },
+  },
+  switch: {
+    tiktok: { pkg: 'com.zhiliaoapp.musically', xp: { xpPerfil: PERFIL.tiktok, xpSelector: '//*[contains(@content-desc,"Cambiar de cuenta") or contains(@content-desc,"Switch account")] | (//*[@resource-id="com.zhiliaoapp.musically:id/title"])[1]' } },
+    instagram: { pkg: 'com.instagram.android', xp: { xpPerfil: PERFIL.instagram, xpSelector: '//*[contains(@content-desc,"Cambiar de cuenta") or contains(@content-desc,"Switch account") or @resource-id="com.instagram.android:id/action_bar_title_chevron"] | (//*[@resource-id="com.instagram.android:id/action_bar_large_title_auto_size"])[1]' } },
+    facebook: { pkg: 'com.facebook.katana', xp: { xpPerfil: '//*[contains(@content-desc,"Menú") or contains(@content-desc,"Menu")]', xpSelector: '//*[contains(@content-desc,"Cambiar de perfil") or contains(@content-desc,"Switch profile") or contains(@content-desc,"Ver todos los perfiles") or contains(@content-desc,"See all profiles")]' } },
+  },
+  delete: {
+    tiktok: { pkg: 'com.zhiliaoapp.musically', xp: { xpPerfil: PERFIL.tiktok, primeraY: '62%', xpMas: '//*[@content-desc="Más" or @content-desc="More" or @content-desc="Compartir" or @content-desc="Share"]', xpEliminar: anyText('Eliminar', 'Delete') } },
+    instagram: { pkg: 'com.instagram.android', xp: { xpPerfil: PERFIL.instagram, primeraY: '58%', xpMas: '//*[@content-desc="Más opciones" or @content-desc="More options" or @content-desc="Opciones" or @content-desc="Options"]', xpEliminar: anyText('Eliminar', 'Delete') } },
+    facebook: { pkg: 'com.facebook.katana', xp: { xpPerfil: PERFIL.facebook, primeraY: '70%', xpMas: '//*[contains(@content-desc,"Más opciones") or contains(@content-desc,"More options")]', xpEliminar: anyText('Eliminar', 'Delete', 'Mover a la papelera', 'Move to trash') } },
+  },
+};
+
+const TOOL_NAMES = { profile: 'Completar perfil', privacy: 'Privacidad', switch: 'Cambiar de cuenta', delete: 'Borrar publicación' };
+const TOOL_BUILD = { profile: profileFlow, privacy: privacyFlow, switch: switchFlow, delete: deleteFlow };
+const APP_NAMES = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook' };
+
+function accountToolTemplates() {
+  return Object.entries(ACCOUNT_TOOLS).flatMap(([tool, byApp]) => Object.entries(byApp).map(([key, cfg]) => ({
+    name: `${TOOL_NAMES[tool]}: ${APP_NAMES[key]}`, tool, toolApp: key,
+    description: `${TOOL_NAMES[tool]} en ${APP_NAMES[key]}. Para usarlo desde Centro de control > Automatizar.`,
+    build: () => TOOL_BUILD[tool]({ key, pkg: cfg.pkg, ...cfg.xp }),
+  })));
+}
+
+TEMPLATES.push(...publishTemplates(), ...warmTemplates(), ...loginTemplates(), popupTemplate, ...accountToolTemplates());

@@ -1,6 +1,6 @@
-// Centro de control, pestañas "General" (apps, dispositivo, multimedia, proxy) y "Automatizar"
-// (scripts por plataforma con su ventana de opciones, como en TrustFarm).
-import { state, $, $$, esc, call, toast, modal, switchView, hydrateIcons } from './core.js';
+// Centro de control, pestañas "General" (apps, dispositivo, multimedia, proxy), "Automatizar"
+// (scripts por plataforma con su ventana de opciones, como en TrustFarm) y "ADB" (comandos rápidos).
+import { state, $, $$, esc, call, toast, modal, switchView, hydrateIcons, showResults } from './core.js';
 import { selectedSerials, deviceNumber } from './devices.js';
 import { TEMPLATES } from './templates.js';
 
@@ -8,10 +8,10 @@ const errText = (e) => String(e?.message || e).replace(/^Error invoking remote m
 
 /** Apps de cada plataforma y qué plantilla usa cada script. */
 export const APPS = {
-  tiktok: { name: 'TikTok', pkg: 'com.zhiliaoapp.musically', publish: 'tiktok', warm: 'tiktok', login: 'tiktok', account: 'tiktok' },
-  instagram: { name: 'Instagram', pkg: 'com.instagram.android', publish: 'reels', warm: 'instagram', login: 'instagram', account: 'instagram' },
-  facebook: { name: 'Facebook', pkg: 'com.facebook.katana', publish: 'facebook', warm: 'facebook', login: 'facebook', account: 'facebook' },
-  youtube: { name: 'YouTube', pkg: 'com.google.android.youtube', publish: 'shorts', warm: 'youtube', login: 'google', account: 'google' },
+  tiktok: { key: 'tiktok', name: 'TikTok', pkg: 'com.zhiliaoapp.musically', publish: 'tiktok', warm: 'tiktok', login: 'tiktok', account: 'tiktok' },
+  instagram: { key: 'instagram', name: 'Instagram', pkg: 'com.instagram.android', publish: 'reels', warm: 'instagram', login: 'instagram', account: 'instagram' },
+  facebook: { key: 'facebook', name: 'Facebook', pkg: 'com.facebook.katana', publish: 'facebook', warm: 'facebook', login: 'facebook', account: 'facebook' },
+  youtube: { key: 'youtube', name: 'YouTube', pkg: 'com.google.android.youtube', publish: 'shorts', warm: 'youtube', login: 'google', account: 'google' },
 };
 let platform = 'tiktok';
 
@@ -178,7 +178,7 @@ const SCRIPTS = {
     },
   },
   warm: {
-    label: 'Calentamiento', icon: 'bolt', group: 'Mantenimiento',
+    label: 'Calentamiento', icon: 'bolt', group: 'Crecimiento',
     async start(app, serials) {
       const v = await scriptDialog({ title: `Calentamiento · ${app.name}`, serials,
         info: `Cada teléfono abre ${esc(app.name)}, busca un tema y mira vídeos de ese tema, pasando al siguiente cada cierto tiempo. Solo mira: no da me gusta, no comenta ni sigue.`,
@@ -198,7 +198,7 @@ const SCRIPTS = {
     },
   },
   popups: {
-    label: 'Cerrar ventanas', icon: 'x-circle', group: 'Mantenimiento',
+    label: 'Cerrar ventanas', icon: 'x-circle', group: 'Crecimiento',
     async start(app, serials) {
       const v = await scriptDialog({ title: 'Cerrar ventanas emergentes', serials,
         info: 'En la pantalla que tenga cada teléfono, toca los botones de cerrar o aceptar avisos (Ahora no, Omitir, Permitir, Aceptar...) hasta 5 veces.' });
@@ -208,14 +208,98 @@ const SCRIPTS = {
       toast(`Cerrando ventanas en ${serials.length} teléfono(s)`);
     },
   },
+  profile: {
+    label: 'Completar perfil', icon: 'tag', group: 'Cuenta', tool: 'profile',
+    async start(app, serials) {
+      let fotos = [];
+      const v = await scriptDialog({ title: `Completar perfil · ${app.name}`, serials,
+        info: `Cada teléfono abre su perfil de ${esc(app.name)}, pulsa "Editar perfil" y cambia lo que rellenes aquí. Una línea por teléfono, en orden (si hay menos líneas que teléfonos, se repiten). Lo que dejes vacío no se cambia.`,
+        sections: [
+          { title: 'Nombre y biografía', html: `<label>Nombres (uno por línea)${app.key === 'facebook' ? ' · en Facebook el nombre no se cambia desde aquí' : ''}<textarea data-k="nombres" rows="4" placeholder="Ana Recetas&#10;Cocina con Beto"></textarea></label>
+            <label>Biografías (una por línea)<textarea data-k="bios" rows="4" placeholder="Recetas fáciles cada día 🍳"></textarea></label>` },
+          { title: 'Foto de perfil', html: `<button type="button" class="soft" data-pick>Elegir fotos…</button><div class="muted small" data-fotos>Sin fotos: no se cambia la foto</div>
+            <p class="muted small">Una foto por teléfono, en orden. Se sube a la galería y se elige como la más reciente.</p>` },
+        ],
+        onMount: (el) => {
+          el.querySelector('[data-pick]').onclick = async () => {
+            fotos = await call('pickMedia', false);
+            el.querySelector('[data-fotos]').textContent = fotos.length ? fotos.map((f) => f.split(/[\\/]/).pop()).join(', ') : 'Sin fotos: no se cambia la foto';
+          };
+        } });
+      if (!v) return;
+      const nombres = lines(v.nombres);
+      const bios = lines(v.bios);
+      if (!nombres.length && !bios.length && !fotos.length) return toast('Rellena al menos un nombre, una biografía o una foto', 'warn');
+      const wf = await ensureFlow((t) => t.tool === 'profile' && t.toolApp === app.key);
+      const vars = Object.fromEntries(serials.map((s, i) => [s, { nombre: pick(nombres, i), bio: pick(bios, i), foto: pick(fotos, i) }]));
+      await call('runWithVars', wf.id, serials, vars);
+      toast(`Completando el perfil en ${serials.length} teléfono(s)`);
+    },
+  },
+  switch: {
+    label: 'Cambiar cuenta', icon: 'refresh', group: 'Cuenta', tool: 'switch',
+    async start(app, serials) {
+      const assigned = Object.fromEntries((state.accounts || []).filter((a) => a.platform === app.account && serials.includes(a.serial)).map((a) => [a.serial, a.user]));
+      const v = await scriptDialog({ title: `Cambiar de cuenta · ${app.name}`, serials,
+        info: `Cambia a otra cuenta que ya tenga la sesión iniciada en ese teléfono (el selector de cuentas de ${esc(app.name)}).`,
+        sections: [{ title: 'Cuenta destino', html: `<label>¿A qué cuenta?<select data-k="modo"><option value="asignada">La asignada a cada teléfono en Cuentas</option><option value="lista">Las que escriba aquí</option></select></label>
+          <label>Cuentas (una por línea, en orden de teléfono; solo si eliges "Las que escriba aquí")<textarea data-k="lista" rows="4" placeholder="mi_cuenta_2"></textarea></label>
+          <table>${serials.map((s) => `<tr><td>${deviceNumber(s)}</td><td>${assigned[s] ? esc(assigned[s]) : '<span class="muted">sin cuenta asignada</span>'}</td></tr>`).join('')}</table>` }] });
+      if (!v) return;
+      const list = lines(v.lista);
+      const target = (s, i) => (v.modo === 'lista' ? pick(list, i) : assigned[s] || '').replace(/^@/, '');
+      const go = serials.filter((s, i) => target(s, i));
+      if (!go.length) return toast(v.modo === 'lista' ? 'Escribe al menos una cuenta' : 'Ninguno de estos teléfonos tiene cuenta asignada en Cuentas', 'warn');
+      const wf = await ensureFlow((t) => t.tool === 'switch' && t.toolApp === app.key);
+      const vars = Object.fromEntries(serials.map((s, i) => [s, { cuenta_destino: target(s, i), cuenta_arroba: `@${target(s, i)}` }]).filter(([, x]) => x.cuenta_destino));
+      await call('runWithVars', wf.id, go, vars);
+      toast(`Cambiando de cuenta en ${go.length} teléfono(s)`);
+    },
+  },
+  delete: {
+    label: 'Borrar posts', icon: 'trash', group: 'Contenido', tool: 'delete',
+    async start(app, serials) {
+      const v = await scriptDialog({ title: `Borrar publicación · ${app.name}`, serials,
+        info: `<b>Atención:</b> borra de verdad las publicaciones más recientes del perfil de cada teléfono en ${esc(app.name)}. No se puede deshacer.`,
+        sections: [{ title: 'Cuántas', html: `<label>Publicaciones a borrar por cuenta (las más recientes)<input data-k="cuantas" type="number" min="1" max="50" value="1" /></label>
+          <label>Escribe BORRAR para confirmar<input data-k="confirma" placeholder="BORRAR" /></label>` }] });
+      if (!v) return;
+      if (v.confirma.trim().toUpperCase() !== 'BORRAR') return toast('No se borró nada: escribe BORRAR para confirmar', 'warn');
+      const wf = await ensureFlow((t) => t.tool === 'delete' && t.toolApp === app.key);
+      const n = String(Math.min(50, Math.max(1, Number(v.cuantas) || 1)));
+      await call('runWithVars', wf.id, serials, Object.fromEntries(serials.map((s) => [s, { cuantas: n }])));
+      toast(`Borrando ${n} publicación(es) en ${serials.length} teléfono(s)`);
+    },
+  },
+  privacy: {
+    label: 'Privacidad', icon: 'shield', group: 'Contenido', tool: 'privacy',
+    async start(app, serials) {
+      const v = await scriptDialog({ title: `Privacidad · ${app.name}`, serials,
+        info: `Pone las cuentas de ${esc(app.name)} como privadas o públicas. Si ya están así, no toca nada.`,
+        sections: [{ title: 'Cuenta privada', html: `<label>Dejar la cuenta<select data-k="privada"><option value="sí">Privada</option><option value="no">Pública</option></select></label>` }] });
+      if (!v) return;
+      const wf = await ensureFlow((t) => t.tool === 'privacy' && t.toolApp === app.key);
+      await call('runWithVars', wf.id, serials, Object.fromEntries(serials.map((s) => [s, { privada: v.privada }])));
+      toast(`Cambiando la privacidad en ${serials.length} teléfono(s)`);
+    },
+  },
 };
+
+const lines = (text) => String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+const pick = (list, i) => (list.length ? list[i % list.length] : '');
+
+/** Orden de los botones dentro de cada grupo (como en TrustFarm). */
+const ORDER = ['login', 'profile', 'switch', 'accounts', 'post', 'mass', 'delete', 'privacy', 'warm', 'popups'];
+
+/** ¿Hay flujo de esta herramienta para esta red? */
+const available = (s) => !s.tool || TEMPLATES.some((t) => t.tool === s.tool && t.toolApp === platform);
 
 function renderAuto() {
   $('#autoPlatforms').innerHTML = Object.entries(APPS).map(([k, a]) => `<button class="${k === platform ? 'active' : ''}" data-plat="${k}">${esc(a.name)}</button>`).join('');
   $$('#autoPlatforms [data-plat]').forEach((b) => (b.onclick = () => { platform = b.dataset.plat; renderAuto(); }));
   const groups = [...new Set(Object.values(SCRIPTS).map((s) => s.group))];
-  $('#autoActions').innerHTML = groups.map((g) => `<div class="section-title">${esc(g)}</div><div class="cc-buttons">${Object.entries(SCRIPTS)
-    .filter(([, s]) => s.group === g).map(([k, s]) => `<button class="soft" data-script="${k}"><i data-icon="${s.icon}"></i>${esc(s.label)}</button>`).join('')}</div>`).join('');
+  $('#autoActions').innerHTML = groups.map((g) => `<div class="section-title">${esc(g)}</div><div class="cc-buttons">${ORDER.map((k) => [k, SCRIPTS[k]])
+    .filter(([, s]) => s.group === g).map(([k, s]) => `<button class="soft" data-script="${k}" ${available(s) ? '' : `disabled title="Aún no disponible para ${esc(APPS[platform].name)}"`}><i data-icon="${s.icon}"></i>${esc(s.label)}</button>`).join('')}</div>`).join('');
   hydrateIcons($('#autoActions'));
   $$('#autoActions [data-script]').forEach((b) => (b.onclick = async () => {
     const s = SCRIPTS[b.dataset.script];
@@ -225,7 +309,70 @@ function renderAuto() {
   }));
 }
 
+// ---------- Comandos ADB ----------
+
+/** Comandos rápidos. show: enseñar la salida de cada teléfono. */
+const ADB_COMMANDS = [
+  { group: 'Pantalla', items: [
+    { label: 'Brillo mínimo', cmd: 'settings put system screen_brightness_mode 0; settings put system screen_brightness 5' },
+    { label: 'Brillo normal', cmd: 'settings put system screen_brightness_mode 0; settings put system screen_brightness 120' },
+    { label: 'Siempre encendida', cmd: 'svc power stayon true; settings put system screen_off_timeout 1800000' },
+    { label: 'Apagado normal', cmd: 'svc power stayon false; settings put system screen_off_timeout 60000' },
+    { label: 'Sin animaciones', cmd: 'settings put global window_animation_scale 0; settings put global transition_animation_scale 0; settings put global animator_duration_scale 0' },
+    { label: 'Con animaciones', cmd: 'settings put global window_animation_scale 1; settings put global transition_animation_scale 1; settings put global animator_duration_scale 1' },
+  ] },
+  { group: 'Conexión', items: [
+    { label: 'Wi-Fi sí', cmd: 'svc wifi enable' },
+    { label: 'Wi-Fi no', cmd: 'svc wifi disable' },
+    { label: 'Datos sí', cmd: 'svc data enable' },
+    { label: 'Datos no', cmd: 'svc data disable' },
+    { label: 'Modo avión sí', cmd: 'cmd connectivity airplane-mode enable 2>/dev/null || (settings put global airplane_mode_on 1; am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true)' },
+    { label: 'Modo avión no', cmd: 'cmd connectivity airplane-mode disable 2>/dev/null || (settings put global airplane_mode_on 0; am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false)' },
+    { label: 'Ver IP pública', cmd: 'curl -s -m 8 https://api.ipify.org 2>/dev/null || toybox wget -qO- -T 8 https://api.ipify.org', show: true },
+    { label: 'Ver IP local', cmd: "ip -4 addr show wlan0 | grep inet | awk '{print $2}'", show: true },
+  ] },
+  { group: 'Sistema', items: [
+    { label: 'No molestar sí', cmd: 'cmd notification set_dnd on' },
+    { label: 'No molestar no', cmd: 'cmd notification set_dnd off' },
+    { label: 'Volumen a 0', cmd: 'cmd media_session volume --stream 3 --set 0 2>/dev/null || media volume --stream 3 --set 0' },
+    { label: 'Hora automática', cmd: 'settings put global auto_time 1; settings put global auto_time_zone 1' },
+    { label: 'Cerrar apps', cmd: 'am kill-all' },
+    { label: 'Batería', cmd: "dumpsys battery | grep -E 'level|temperature|status'", show: true },
+    { label: 'Modelo y Android', cmd: 'echo "$(getprop ro.product.model) · Android $(getprop ro.build.version.release)"', show: true },
+    { label: 'Abrir Ajustes', cmd: 'am start -a android.settings.SETTINGS' },
+  ] },
+];
+
+async function runShell(label, cmd, show) {
+  const serials = targets();
+  if (!serials.length) return;
+  try {
+    const res = await call('shellCmd', serials, cmd);
+    if (show) showResults(label, res);
+    else {
+      const bad = res.filter((r) => !r.ok);
+      toast(bad.length ? `${label}: ${bad.length} con error (${bad[0].out.split('\n')[0]})` : `${label}: hecho en ${res.length} teléfono(s)`, bad.length ? 'warn' : 'info');
+    }
+  } catch (e) { toast(errText(e), 'error'); }
+}
+
+function initAdb() {
+  $('#adbQuick').innerHTML = ADB_COMMANDS.map((g, gi) => `<div class="section-title">${esc(g.group)}</div><div class="cc-buttons">${g.items
+    .map((c, i) => `<button class="soft" data-adb="${gi}.${i}" title="${esc(c.cmd)}">${esc(c.label)}</button>`).join('')}</div>`).join('');
+  $$('#adbQuick [data-adb]').forEach((b) => (b.onclick = () => {
+    const [gi, i] = b.dataset.adb.split('.').map(Number);
+    const c = ADB_COMMANDS[gi].items[i];
+    runShell(c.label, c.cmd, c.show);
+  }));
+  $('#adbRun').onclick = () => {
+    const cmd = $('#adbCmd').value.trim();
+    if (!cmd) return toast('Escribe un comando (se ejecuta con adb shell)', 'warn');
+    runShell('Comando', cmd, true);
+  };
+}
+
 export function initControlTabs() {
+  initAdb();
   initGeneral();
   renderAuto();
 }
