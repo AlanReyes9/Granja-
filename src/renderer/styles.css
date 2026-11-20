@@ -185,7 +185,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 /* ---------- Centro de control ---------- */
 .cc { flex: 1; display: flex; min-height: 0; padding: 16px; gap: 16px; }
-.cc-panel { width: 250px; flex: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow-sm); transition: width .18s; }
+.cc-panel { width: 300px; overflow-y: auto; flex: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow-sm); transition: width .18s; }
 .cc.collapsed .cc-panel { width: 52px; }
 .cc.collapsed .cc-panel > :not(.tabs):not(.cc-rail), .cc.collapsed .tabs > :not(.collapse) { display: none; }
 .cc.collapsed .tabs { justify-content: center; padding: 10px 0 6px; }
@@ -212,7 +212,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .filter-tabs button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
 .groups-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 12px 4px 18px; font-weight: 650; }
 .groups-head button { width: 26px; height: 26px; color: var(--accent); }
-.groups { flex: 1; overflow: auto; padding: 0 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.groups { flex: none; overflow: visible; padding: 0 8px 10px; display: flex; flex-direction: column; gap: 2px; }
 .group-row { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; height: 36px; border-radius: 8px; cursor: pointer; color: var(--text-2); }
 .group-row:hover { background: var(--surface-2); }
 .group-row.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
@@ -491,3 +491,40 @@ table.data .empty-row td { color: var(--muted); text-align: center; padding: 26p
 .pb-clips .clip { padding: 2px 6px; }
 .ai-row > * { min-width: 0; }
 .ai-row input, .ai-row select { width: 100%; box-sizing: border-box; }
+
+/* Centro de control: General, Automatizar y números de teléfono */
+.tabs button { padding: 0 8px; }
+.cc-tab .section-title { margin: 6px 0 -2px; }
+.gen-apps { display: flex; flex-direction: column; gap: 6px; }
+.gen-app { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; font-weight: 600; }
+.gen-app button { height: 30px; padding: 0 12px; }
+button.wide { width: 100%; height: 34px; }
+.plat-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.plat-tabs button { height: 30px; padding: 0 12px; border-radius: 8px; font-weight: 600; }
+.plat-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.auto-actions { display: flex; flex-direction: column; gap: 6px; }
+.auto-actions .cc-buttons button.primary-soft { background: var(--accent); color: #fff; border-color: var(--accent); }
+.num-box { margin: 4px 10px 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2, var(--surface)); }
+.num-all { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.num-all em { font-style: normal; font-size: 11px; padding: 0 6px; border-radius: 99px; background: var(--surface-3); }
+.num-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 6px; margin-top: 8px; }
+.num-chips button { height: 34px; padding: 0; border-radius: 8px; font-weight: 700; background: var(--surface-3); border: 1px solid var(--line); color: var(--text-2); }
+.num-chips button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.num-chips button.off { opacity: .45; }
+/* Ventana de script (estilo TrustFarm) */
+.script-dlg .devs { font-weight: 600; margin-bottom: 4px; }
+.script-dlg .devnums { display: flex; flex-wrap: wrap; gap: 10px; font-weight: 700; margin: 4px 0; }
+.script-dlg .limit { color: var(--accent); font-size: 12px; margin-bottom: 10px; }
+.script-dlg .info { padding: 10px 12px; border-radius: 10px; background: var(--surface-3); font-size: 12.5px; margin-bottom: 12px; }
+.script-dlg .layout { display: grid; grid-template-columns: 170px 1fr; gap: 16px; min-height: 220px; }
+.script-dlg .nav { display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line); padding-right: 12px; }
+.script-dlg .nav button { text-align: left; justify-content: flex-start; height: auto; min-height: 36px; padding: 6px 10px; background: transparent; border: 0; color: var(--text-2); }
+.script-dlg .nav button.active { background: var(--accent-soft, rgba(79,110,247,.12)); color: var(--accent); font-weight: 600; }
+.script-dlg .pane { display: flex; flex-direction: column; gap: 10px; }
+.script-dlg .pane.hidden { display: none; }
+.script-dlg .pane label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.script-dlg .pane .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.script-dlg table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.script-dlg td { padding: 4px 6px; border-top: 1px solid var(--line); }
+.cc-tab .cc-buttons button { min-width: 0; padding: 0 8px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.script-dlg .nav button { white-space: normal; line-height: 1.3; }

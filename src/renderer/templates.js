@@ -515,4 +515,23 @@ function loginTemplates() {
     build: () => loginFlow({ key: p.key, pkg: p.pkg, ...p.xp }) }));
 }
 
-TEMPLATES.push(...publishTemplates(), ...warmTemplates(), ...loginTemplates());
+/** Botones con los que se cierran avisos y ventanas emergentes habituales. */
+export const POPUP_XPATH = anyText('Ahora no', 'Not now', 'Cerrar', 'Close', 'Omitir', 'Skip', 'Saltar', 'Entendido', 'Got it',
+  'Aceptar', 'Accept', 'OK', 'Aceptar todo', 'Accept all', 'Permitir', 'Allow', 'Mientras se usa la app', 'While using the app', 'Más tarde', 'Later', 'No, gracias', 'No thanks');
+
+const popupTemplate = {
+  name: 'Cerrar ventanas emergentes', popups: true,
+  description: 'Toca hasta 5 veces los botones de cerrar/aceptar avisos (Ahora no, Omitir, Permitir...) en la pantalla actual.',
+  build: () => buildGraph([
+    { type: 'start', x: 0, y: 0 },
+    { type: 'set_var', params: { name: 'xp_cerrar', value: POPUP_XPATH }, x: 215, y: 0 },
+    { type: 'set_var', params: { name: 'cerrados', value: '0' }, x: 430, y: 0 },
+    { type: 'loop', params: { times: '5' }, x: 645, y: 0 },
+    { type: 'tap_xpath', params: { xpath: '{xp_cerrar}', timeout: 2500 }, x: 645, y: 230 },
+    { type: 'math_var', params: { name: 'cerrados', op: '+', value: '1' }, x: 860, y: 230 },
+    { type: 'random_wait', params: { min: 800, max: 1500 }, x: 1075, y: 230 },
+    { type: 'log', params: { message: '{device.name}: {cerrados} ventana(s) cerrada(s)' }, x: 860, y: 0 },
+  ], [[0, 0, 1], [1, 0, 2], [2, 0, 3], [3, 0, 4], [3, 1, 7], [4, 0, 5], [4, 1, 7], [5, 0, 6], [6, 0, 3]]),
+};
+
+TEMPLATES.push(...publishTemplates(), ...warmTemplates(), ...loginTemplates(), popupTemplate);

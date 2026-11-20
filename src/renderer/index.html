@@ -45,16 +45,41 @@
       <div class="cc">
         <aside class="cc-panel">
           <div class="tabs" id="ccTabs">
-            <button data-tab="screen" class="active">Pantalla</button>
+            <button data-tab="general" class="active">General</button>
+            <button data-tab="auto">Automatizar</button>
+            <button data-tab="screen">Pantalla</button>
             <button data-tab="otg">OTG</button>
             <button class="collapse icon-only ghost" id="ccCollapse" title="Contraer panel"><i data-icon="chevron-left"></i></button>
           </div>
           <div class="cc-rail">
+            <button class="ghost icon-only" data-open="general" title="General"><i data-icon="grid"></i></button>
+            <button class="ghost icon-only" data-open="auto" title="Automatizar"><i data-icon="bolt"></i></button>
             <button class="ghost icon-only" data-open="screen" title="Pantalla"><i data-icon="monitor"></i></button>
             <button class="ghost icon-only" data-open="otg" title="OTG"><i data-icon="usb"></i></button>
             <button class="ghost icon-only" data-open="groups" title="Grupos"><i data-icon="layers"></i></button>
           </div>
-          <div class="cc-tab" data-tab="screen">
+          <div class="cc-tab" data-tab="general">
+            <div class="section-title">Apps</div>
+            <div id="genApps" class="gen-apps"></div>
+            <div class="section-title">Dispositivo</div>
+            <div class="cc-buttons">
+              <button class="soft" data-gen="clear"><i data-icon="eraser"></i>Borrar datos</button>
+              <button class="soft" data-gen="perms"><i data-icon="shield-check"></i>Permisos</button>
+              <button class="soft" data-gen="apk"><i data-icon="download"></i>Instalar APK</button>
+              <button class="soft" data-gen="uninstall"><i data-icon="trash"></i>Desinstalar</button>
+            </div>
+            <div class="section-title">Multimedia</div>
+            <div class="cc-buttons">
+              <button class="soft" data-gen="gallery"><i data-icon="upload"></i>Subir a galería</button>
+              <button class="soft" data-gen="galleryClear"><i data-icon="eraser"></i>Limpiar galería</button>
+            </div>
+            <button class="soft wide" data-gen="proxy"><i data-icon="shield"></i>Establecer proxy</button>
+          </div>
+          <div class="cc-tab hidden" data-tab="auto">
+            <div class="plat-tabs" id="autoPlatforms"></div>
+            <div id="autoActions" class="auto-actions"></div>
+          </div>
+          <div class="cc-tab hidden" data-tab="screen">
             <label class="slider"><span>Vista grande</span><input type="range" id="bigSize" min="420" max="900" step="10" /></label>
             <label class="slider"><span>Miniaturas</span><input type="range" id="thumbSize" min="90" max="320" /></label>
             <label class="slider"><span>Calidad</span><input type="range" id="quality" min="30" max="95" step="5" /></label>
@@ -88,6 +113,11 @@
             <button data-tr="" class="active">Todos</button><button data-tr="usb">USB</button><button data-tr="wifi">Wi-Fi</button><button data-tr="otg">OTG</button>
           </div>
           <div class="groups-head"><span>Grupos</span><button id="btnNewGroup" class="ghost icon-only" title="Crear grupo con los seleccionados"><i data-icon="plus"></i></button></div>
+          <div class="num-box">
+            <label class="num-all"><input type="checkbox" id="numAll" /> Todos los dispositivos <em id="numTotal"></em></label>
+            <div class="muted small" id="numSel"></div>
+            <div class="num-chips" id="numChips"></div>
+          </div>
           <div class="groups" id="groupList"></div>
         </aside>
         <div class="cc-main">

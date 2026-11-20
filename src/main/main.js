@@ -169,6 +169,13 @@ warmup.on('changed', (list) => emit('warmups', list));
 accounts.on('changed', (list) => emit('accounts', list));
 
 // ---------- Utilidades ----------
+const GALLERY_DIR = '/sdcard/DCIM/NexusFarmer';
+const pkgName = (pkg) => {
+  const name = String(pkg || '').trim();
+  if (!/^[A-Za-z][\w]*(\.[A-Za-z0-9_]+)+$/.test(name)) throw new Error(`Paquete no válido: "${name}"`);
+  return name;
+};
+
 async function forEachSerial(serials, fn) {
   const results = await Promise.all(serials.map(async (s) => {
     try { return { serial: s, ok: true, out: String((await fn(devices.get(s), s)) ?? '').trim() }; } catch (e) { return { serial: s, ok: false, out: e.message }; }
@@ -235,6 +242,33 @@ const handlers = {
   openApp: (serials, pkg) => forEachSerial(serials, async (d) => {
     const { launchApp } = await import('./automation/actions.js');
     return launchApp(d, pkg);
+  }),
+  stopApp: (serials, pkg) => forEachSerial(serials, (d) => d.shell(`am force-stop ${pkgName(pkg)}`)),
+  clearApp: (serials, pkg) => forEachSerial(serials, (d) => d.shell(`pm clear ${pkgName(pkg)}`)),
+  uninstallApp: (serials, pkg) => forEachSerial(serials, (d) => d.shell(`pm uninstall ${pkgName(pkg)}`)),
+  /** Concede a la app los permisos habituales (cámara, micro, fotos y vídeos, notificaciones); los que no declare se ignoran. */
+  grantPerms: (serials, pkg) => forEachSerial(serials, async (d) => {
+    const name = pkgName(pkg);
+    const perms = ['CAMERA', 'RECORD_AUDIO', 'READ_MEDIA_VIDEO', 'READ_MEDIA_IMAGES', 'READ_MEDIA_AUDIO', 'READ_EXTERNAL_STORAGE',
+      'WRITE_EXTERNAL_STORAGE', 'POST_NOTIFICATIONS', 'READ_CONTACTS', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION'];
+    const out = await d.shell(perms.map((p) => `pm grant ${name} android.permission.${p} 2>/dev/null && echo ok`).join('; '));
+    return `${(out.match(/ok/g) || []).length} permisos concedidos`;
+  }),
+  /** Sube vídeos o fotos a la galería del teléfono (DCIM/NexusFarmer) y los registra para que las apps los vean. */
+  galleryUpload: (serials, files) => forEachSerial(serials, async (d) => {
+    await d.shell(`mkdir -p ${GALLERY_DIR}`);
+    for (const f of files) {
+      const remote = `${GALLERY_DIR}/${path.basename(f).replace(/[^\w.-]+/g, '_')}`;
+      await d.push(f, remote);
+      await d.shell(`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d 'file://${remote}'`).catch(() => {});
+    }
+    return `${files.length} archivo(s) en la galería`;
+  }),
+  /** Borra de la galería lo que subió la app (DCIM/NexusFarmer), no las fotos propias del teléfono. */
+  galleryClear: (serials) => forEachSerial(serials, async (d) => {
+    await d.shell(`rm -rf ${GALLERY_DIR}/*`);
+    await d.shell('content call --uri content://media --method scan_volume --arg external_primary').catch(() => {});
+    return 'Galería de Nexus Farmer vacía';
   }),
   saveScreenshot: async (serial) => {
     const name = (store.get('deviceMeta')[serial]?.name || serial).replace(/[^\w.-]+/g, '_');

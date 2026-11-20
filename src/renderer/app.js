@@ -5,6 +5,7 @@ import { initAiTest, onAiEvent } from './aitest.js';
 import { initPosts, onPosts, renderPhones as renderPostPhones } from './posts.js';
 import { initWarm, onWarmups, renderWarmPhones } from './warm.js';
 import { initAccounts, onAccounts, renderAccounts } from './accounts.js';
+import { initControlTabs } from './general.js';
 import { initEditor, highlightRuns } from './editor.js';
 import { initViews, renderRuns, appendLog, renderSchedules, renderTables, renderSettings, renderHistory } from './views.js';
 import { initProxies, renderProxies } from './proxies.js';
@@ -75,6 +76,7 @@ async function main() {
   initPosts();
   initWarm();
   initAccounts();
+  initControlTabs();
   renderDevices();
   renderSideStatus();
   renderRuns();

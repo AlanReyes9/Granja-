@@ -146,6 +146,42 @@ function renderGroups() {
     box.appendChild(row);
   }
   $$('#trFilter button').forEach((b) => b.classList.toggle('active', (b.dataset.tr || '') === (state.trFilter || '')));
+  renderNumbers();
+}
+
+/** Cuadrícula con el número de cada teléfono: pulsar uno lo selecciona o deselecciona. */
+function renderNumbers() {
+  const list = ordered();
+  const ready = list.filter((d) => d.state === 'device');
+  const selCount = ready.filter((d) => state.selected.has(d.serial)).length;
+  $('#numTotal').textContent = list.length;
+  $('#numSel').textContent = `${selCount} de ${ready.length} seleccionados`;
+  $('#numAll').checked = ready.length > 0 && selCount === ready.length;
+  $('#numAll').onchange = (e) => {
+    for (const d of ready) {
+      if (e.target.checked) state.selected.add(d.serial);
+      else state.selected.delete(d.serial);
+    }
+    updateSelection();
+  };
+  const box = $('#numChips');
+  box.innerHTML = '';
+  list.forEach((d, i) => {
+    const on = state.selected.has(d.serial);
+    const b = h(`<button class="${on ? 'on' : ''} ${d.state !== 'device' ? 'off' : ''}" title="${esc(deviceName(d.serial))}">${i + 1}</button>`);
+    b.onclick = () => {
+      if (d.state !== 'device') return;
+      if (on) state.selected.delete(d.serial);
+      else state.selected.add(d.serial);
+      updateSelection();
+    };
+    box.appendChild(b);
+  });
+}
+
+/** Número de cada teléfono en la granja (el de su tarjeta). */
+export function deviceNumber(serial) {
+  return ordered().findIndex((d) => d.serial === serial) + 1;
 }
 
 export function renderDevices() {
@@ -199,7 +235,7 @@ function updateSelection(rerender = true) {
       el.querySelector('.sel').checked = state.selected.has(serial);
     }
     renderGroups();
-  }
+  } else renderNumbers();
 }
 
 /** Dispositivos destino de una acción táctil: el propio o todos los seleccionados en modo sincronizado. */
@@ -612,7 +648,7 @@ export function initDevices() {
   // Iconos del panel contraído: lo expanden directamente en la sección elegida.
   $$('.cc-rail [data-open]').forEach((b) => (b.onclick = () => {
     setPanelCollapsed(false);
-    const tab = b.dataset.open === 'groups' ? 'screen' : b.dataset.open;
+    const tab = b.dataset.open === 'groups' ? 'general' : b.dataset.open;
     $(`#ccTabs [data-tab="${tab}"]`).click();
     if (b.dataset.open === 'groups') $('#groupList').scrollIntoView({ block: 'nearest' });
   }));
