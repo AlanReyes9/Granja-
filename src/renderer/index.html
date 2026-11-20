@@ -20,6 +20,7 @@
       <button data-view="editor"><i data-icon="workflow"></i><span>Automatización</span></button>
       <button data-view="schedules"><i data-icon="calendar"></i><span>Programador</span></button>
       <button data-view="runs"><i data-icon="activity"></i><span>Ejecuciones</span><em id="navRunCount"></em></button>
+      <button data-view="accounts"><i data-icon="key"></i><span>Cuentas</span><em id="navAccCount"></em></button>
       <button data-view="posts"><i data-icon="upload"></i><span>Publicaciones</span><em id="navPostCount"></em></button>
       <button data-view="warm"><i data-icon="bolt"></i><span>Calentamiento</span><em id="navWarmCount"></em></button>
       <button data-view="proxies"><i data-icon="shield"></i><span>Proxys</span><em id="navProxyCount"></em></button>
@@ -238,6 +239,31 @@
     </section>
 
     <!-- ================= AJUSTES ================= -->
+    <section id="view-accounts" class="view" data-title="Cuentas">
+      <header class="page-head">
+        <div class="head-info"><p class="sub" id="accSummary">Las cuentas de cada red social, con su teléfono. Las contraseñas se guardan cifradas en este equipo.</p></div>
+        <div class="group">
+          <button id="accFlows" class="soft"><i data-icon="workflow"></i>Crear flujos de inicio de sesión</button>
+          <button id="accImport" class="primary"><i data-icon="plus"></i>Añadir cuentas</button>
+        </div>
+      </header>
+      <div class="panel grow">
+        <div class="panel-head">
+          <div class="group">
+            <select id="accPlatform"><option value="">Todas las plataformas</option></select>
+            <div class="search sm"><i data-icon="search" data-size="14"></i><input id="accFilter" placeholder="Buscar usuario o teléfono" /></div>
+          </div>
+          <div class="group">
+            <button id="accAuto" class="ghost"><i data-icon="shuffle"></i>Repartir entre teléfonos</button>
+            <button id="accLogin" class="primary"><i data-icon="key"></i>Iniciar sesión</button>
+            <button id="accStop" class="ghost"><i data-icon="square"></i>Detener</button>
+            <button id="accDelete" class="ghost danger"><i data-icon="trash"></i>Eliminar</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="data" id="accTable"></table></div>
+      </div>
+    </section>
+
     <section id="view-posts" class="view" data-title="Publicaciones">
       <header class="page-head">
         <div class="head-info"><p class="sub">Publica tus clips en varias cuentas a la vez: un teléfono por cuenta, cada uno con su clip y su descripción</p></div>

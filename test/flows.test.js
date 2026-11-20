@@ -72,7 +72,7 @@ function fast(graph) {
 
 test('todas las plantillas terminan sin error en un teléfono realista', async () => {
   const tables = [{ name: 'cuentas', columns: ['usuario', 'clave'], rows: [['ana', 'Clave1000!']] }];
-  for (const t of TEMPLATES.filter((x) => !x.publish && !x.warm)) { // publicar y calentar tienen su propia prueba
+  for (const t of TEMPLATES.filter((x) => !x.publish && !x.warm && !x.login)) { // publicar, calentar e iniciar sesión tienen su propia prueba
     const phone = new RealisticPhone({ locked: true });
     const { engine } = engineFor(phone, tables);
     const res = await run(engine, fast(t.build()));

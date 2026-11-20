@@ -16,6 +16,7 @@ import { parseCsv, toCsv } from './csv.js';
 import { ProxyManager, parseProxyLine } from './proxies.js';
 import { Publisher, mediaInFolder, MEDIA_EXT } from './publisher.js';
 import { Warmup } from './warmup.js';
+import { AccountManager } from './accounts.js';
 import { LicenseManager } from './licensing/license.js';
 import { ScreenStreamer } from './stream.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -70,6 +71,10 @@ const scheduler = new Scheduler({ store, engine, devices, onEvent: (m) => toast(
 const findWorkflow = (id) => (store.get('workflows') || []).find((w) => w.id === id);
 const publisher = new Publisher({ engine, store, getSettings: () => settings(), getWorkflow: findWorkflow });
 const warmup = new Warmup({ engine, store, getSettings: () => settings(), getWorkflow: findWorkflow });
+// Contraseñas de las cuentas: cifradas con el almacén seguro del sistema (DPAPI en Windows).
+const accounts = new AccountManager({ engine, store, getSettings: () => settings(), getWorkflows: () => store.get('workflows') || [],
+  encrypt: (v) => (safeStorage.isEncryptionAvailable() ? { enc: safeStorage.encryptString(v).toString('base64') } : { plain: v }),
+  decrypt: (k) => { try { return k?.enc ? safeStorage.decryptString(Buffer.from(k.enc, 'base64')) : k?.plain || ''; } catch { return ''; } } });
 const api = new ApiServer({ store, devices, engine, proxies });
 const health = {}; // serial -> details
 
@@ -161,6 +166,7 @@ engine.on('runs', (runs) => emit('runs', runs));
 engine.on('log', (entry) => emit('log', entry));
 publisher.on('changed', (posts) => emit('posts', posts));
 warmup.on('changed', (list) => emit('warmups', list));
+accounts.on('changed', (list) => emit('accounts', list));
 
 // ---------- Utilidades ----------
 async function forEachSerial(serials, fn) {
@@ -184,7 +190,7 @@ const handlers = {
     try { adbVersion = await adb.version(); } catch {}
     return {
       devices: devices.list(), settings: settings(), defaults: DEFAULT_SETTINGS, workflows: store.get('workflows'), proxies: proxies.list(),
-      schedules: store.get('schedules'), posts: publisher.list(), warmups: warmup.list(), deviceMeta: store.get('deviceMeta'), tables: store.get('tables').map(({ rows, ...t }) => ({ ...t, count: rows.length })),
+      schedules: store.get('schedules'), posts: publisher.list(), warmups: warmup.list(), accounts: accounts.list(), deviceMeta: store.get('deviceMeta'), tables: store.get('tables').map(({ rows, ...t }) => ({ ...t, count: rows.length })),
       runs: engine.listRuns(), adbVersion, adbPath: adbPath(), lastError: devices.lastError, api: api.status(), health,
       scrcpy: settings().scrcpyPath || tools.localScrcpy(), screenshotsDir, version: app.getVersion(),
     };
@@ -461,6 +467,15 @@ const handlers = {
   warmCreate: (opts) => warmup.create(opts),
   warmCancel: (id) => warmup.cancel(id),
   warmRemove: (id) => warmup.remove(id),
+  // ---------- Cuentas ----------
+  accounts: () => accounts.list(),
+  accSecure: () => safeStorage.isEncryptionAvailable(),
+  accImport: (text, platform) => accounts.import(text, platform),
+  accUpdate: (id, patch) => accounts.update(id, patch),
+  accRemove: (ids) => accounts.remove(ids),
+  accAutoAssign: (serials, platform) => accounts.autoAssign(serials, platform),
+  accLogin: (ids) => accounts.login(ids),
+  accStop: () => accounts.stop(),
   pickMedia: async (folder) => {
     if (folder) {
       const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });

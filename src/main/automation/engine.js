@@ -25,11 +25,15 @@ export function compileDrawflow(exported) {
   return { nodes, startIds };
 }
 
+/** Variables con contraseñas: nunca se escriben en el registro. */
+export const SECRET_VARS = ['clave', 'password', 'contraseña', 'pass'];
+const hidesSecret = (raw, secrets) => secrets.some((v) => String(raw ?? '').includes(`{${v}}`));
+
 /** Resumen corto de los parámetros de un paso para el registro, p. ej. ' (x: 50%, y: 80%)'. */
-function stepSummary(def, params, vars) {
+function stepSummary(def, params, vars, secrets = SECRET_VARS) {
   if (!def?.params.length) return '';
   const parts = def.params.filter((p) => p.type !== 'checkbox')
-    .map((p) => [p, String(A.renderTemplate(params[p.key] ?? p.default, vars))])
+    .map((p) => [p, hidesSecret(params[p.key], secrets) ? '••••••' : String(A.renderTemplate(params[p.key] ?? p.default, vars))])
     .filter(([, v]) => v !== '').slice(0, 3)
     .map(([p, v]) => `${p.label.split(' (')[0].toLowerCase()}: ${v.slice(0, 40)}`);
   return parts.length ? ` (${parts.join(', ')})` : '';
@@ -51,13 +55,13 @@ export class Engine extends EventEmitter {
   listRuns() {
     return [...this.runs.values()].map((r) => ({
       id: r.id, workflowId: r.workflowId, workflow: r.workflowName, startedAt: r.startedAt, finishedAt: r.finishedAt, status: r.status,
-      devices: Object.fromEntries(Object.entries(r.devices).map(([s, d]) => [s, { status: d.status, step: d.step, nodeId: d.nodeId }])),
+      devices: Object.fromEntries(Object.entries(r.devices).map(([s, d]) => [s, { status: d.status, step: d.step, nodeId: d.nodeId, error: d.error || '' }])),
     }));
   }
 
   /** Lanza un flujo. Devuelve el id de la ejecución. */
   /** varsBySerial: variables propias de cada teléfono (p. ej. qué clip y qué descripción publica). */
-  start(workflow, serials, { concurrency = 10, staggerMs = 0, source = 'manual', varsBySerial = {} } = {}) {
+  start(workflow, serials, { concurrency = 10, staggerMs = 0, source = 'manual', varsBySerial = {}, secretVars = [] } = {}) {
     const graph = compileDrawflow(workflow.graph);
     if (!graph.startIds.length) throw new Error('El flujo necesita un nodo "Inicio"');
     if (graph.startIds.every((id) => !graph.nodes[id].next.flat().length)) {
@@ -68,7 +72,7 @@ export class Engine extends EventEmitter {
     const controller = new AbortController();
     const run = {
       id, workflowId: workflow.id, workflowName: workflow.name, startedAt: Date.now(), finishedAt: null, status: 'running', source,
-      controller, varsBySerial, devices: Object.fromEntries(serials.map((s) => [s, { status: 'en cola', step: '' }])),
+      controller, varsBySerial, secretVars, devices: Object.fromEntries(serials.map((s) => [s, { status: 'en cola', step: '' }])),
     };
     this.runs.set(id, run);
     this.emit('runs', this.listRuns());
@@ -127,6 +131,8 @@ export class Engine extends EventEmitter {
     const vars = {
       'device.serial': serial, 'device.name': meta.name || serial, 'device.group': meta.group || '',
       'device.index': index, 'device.proxy': meta.proxy || '', 'run.id': run.id,
+      // Usuario de la cuenta de cada plataforma asignada a este teléfono: {cuenta.tiktok}, {cuenta.instagram}...
+      ...Object.fromEntries((this.store.get('accounts') || []).filter((a) => a.serial === serial).map((a) => [`cuenta.${a.platform}`, a.user])),
       ...(run.varsBySerial?.[serial] || {}),
     };
     const loopCounters = {};
@@ -154,7 +160,7 @@ export class Engine extends EventEmitter {
         state.step = label;
         state.nodeId = node.id;
         this.emitRunsSoon();
-        if (node.type !== 'start' && node.type !== 'log') this.log(run.id, serial, 'step', `${label}${stepSummary(def, node.params, vars)}`);
+        if (node.type !== 'start' && node.type !== 'log') this.log(run.id, serial, 'step', `${label}${stepSummary(def, node.params, vars, [...SECRET_VARS, ...(run.secretVars || [])])}`);
         let outIndex;
         try {
           outIndex = await this.execNode(node, { device, vars, signal, run, serial, loopCounters, index });
@@ -173,6 +179,7 @@ export class Engine extends EventEmitter {
       this.log(run.id, serial, 'info', 'Flujo completado');
     } catch (e) {
       state.status = signal.aborted ? 'detenido' : 'error';
+      state.error = e.message;
       this.log(run.id, serial, signal.aborted ? 'warn' : 'error', e.message);
     }
     state.step = '';

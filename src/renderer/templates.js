@@ -403,4 +403,116 @@ function publishTemplates() {
   return PUBLISH_PLATFORMS.map((p) => ({ name: p.name, description: p.description, publish: p.key, build: () => publishFlow({ pkg: p.pkg, ...p.xp }) }));
 }
 
-TEMPLATES.push(...publishTemplates(), ...warmTemplates());
+/**
+ * Inicio de sesión: abre la app, comprueba si ya hay sesión, toca los pasos hasta el formulario
+ * (xp_paso1..3, opcionales), escribe {usuario} y {clave} y comprueba el resultado.
+ * Variables vacías = ese paso se salta.
+ */
+function loginFlow({ key, pkg, openCmd = '', pasos = [], xpUsuario = '(//android.widget.EditText)[1]', xpTrasUsuario = '',
+  xpClave = '(//android.widget.EditText)[2]', xpBoton, xpSesion = '', xpReto = '', xpDespues = '' }) {
+  const nodes = [];
+  const N = {};
+  const add = (k, type, params = {}) => { N[k] = nodes.length; nodes.push({ type, params }); };
+  const vars = { login_plataforma: key, xp_paso1: pasos[0] || '', xp_paso2: pasos[1] || '', xp_paso3: pasos[2] || '', xp_usuario: xpUsuario,
+    xp_tras_usuario: xpTrasUsuario, xp_clave: xpClave, xp_boton: xpBoton, xp_sesion: xpSesion, xp_reto: xpReto, xp_despues: xpDespues };
+  add('start', 'start');
+  const varKeys = Object.keys(vars).map((name) => { add(`v_${name}`, 'set_var', { name, value: vars[name] }); return `v_${name}`; });
+  add('wake', 'wake_unlock');
+  add('cerrar', 'stop_app', { package: pkg });
+  if (openCmd) add('abrir', 'shell', { command: openCmd, var: '' });
+  else add('abrir', 'open_app', { package: pkg });
+  add('w1', 'random_wait', { min: 5000, max: 8000 });
+  add('h1', 'if_var', { name: 'xp_paso1', op: '==', value: '' });
+  add('p1', 'tap_xpath', { xpath: '{xp_paso1}', timeout: 8000 });
+  add('w2', 'random_wait', { min: 2000, max: 3500 });
+  add('hs', 'if_var', { name: 'xp_sesion', op: '==', value: '' });
+  add('s0', 'if_xpath', { xpath: '{xp_sesion}', timeout: 3000 });
+  add('ya', 'log', { message: '{device.name}: ya tenía la sesión iniciada' });
+  add('c2', 'if_xpath', { xpath: '{xp_usuario}', timeout: 2500 });
+  add('h2', 'if_var', { name: 'xp_paso2', op: '==', value: '' });
+  add('p2', 'tap_xpath', { xpath: '{xp_paso2}', timeout: 6000 });
+  add('w3', 'random_wait', { min: 2000, max: 3500 });
+  add('c3', 'if_xpath', { xpath: '{xp_usuario}', timeout: 2500 });
+  add('h3', 'if_var', { name: 'xp_paso3', op: '==', value: '' });
+  add('p3', 'tap_xpath', { xpath: '{xp_paso3}', timeout: 6000 });
+  add('w4', 'random_wait', { min: 2000, max: 3500 });
+  add('campoU', 'tap_xpath', { xpath: '{xp_usuario}', timeout: 10000 });
+  add('escU', 'type_text', { text: '{usuario}', humanize: false });
+  add('w5', 'random_wait', { min: 800, max: 1500 });
+  add('ht', 'if_var', { name: 'xp_tras_usuario', op: '==', value: '' });
+  add('tras', 'tap_xpath', { xpath: '{xp_tras_usuario}', timeout: 6000 });
+  add('w6', 'random_wait', { min: 3000, max: 5000 });
+  add('campoC', 'tap_xpath', { xpath: '{xp_clave}', timeout: 15000 });
+  add('escC', 'type_text', { text: '{clave}', humanize: false });
+  add('w7', 'random_wait', { min: 800, max: 1500 });
+  add('boton', 'tap_xpath', { xpath: '{xp_boton}', timeout: 8000 });
+  add('enter', 'key', { key: 'ENTER' });
+  add('w8', 'random_wait', { min: 8000, max: 12000 });
+  add('hr', 'if_var', { name: 'xp_reto', op: '==', value: '' });
+  add('reto', 'if_xpath', { xpath: '{xp_reto}', timeout: 2000 });
+  add('hd', 'if_var', { name: 'xp_despues', op: '==', value: '' });
+  add('d1', 'tap_xpath', { xpath: '{xp_despues}', timeout: 4000 });
+  add('w9', 'random_wait', { min: 2000, max: 3500 });
+  add('d2', 'tap_xpath', { xpath: '{xp_despues}', timeout: 3000 });
+  add('hs2', 'if_var', { name: 'xp_sesion', op: '==', value: '' });
+  add('s2', 'if_xpath', { xpath: '{xp_sesion}', timeout: 10000 });
+  add('sigue', 'if_xpath', { xpath: '{xp_clave}', timeout: 2000 });
+  add('dudoso', 'log', { message: '{device.name}: se envió el inicio de sesión (no se pudo confirmar en pantalla)' });
+  add('ok', 'log', { message: '{device.name}: sesión iniciada como {usuario}' });
+  add('inicio', 'key', { key: 'HOME' });
+  add('m1', 'set_var', { name: 'motivo', value: 'No encontré el campo de usuario (ajusta xp_usuario o los pasos xp_paso1..3)' });
+  add('m2', 'set_var', { name: 'motivo', value: 'No apareció el campo de contraseña (ajusta xp_clave)' });
+  add('m3', 'set_var', { name: 'motivo', value: 'La app pide un código o una verificación: complétala a mano en el teléfono' });
+  add('m4', 'set_var', { name: 'motivo', value: 'Usuario o contraseña incorrectos, o la app pidió algo más (mira la captura)' });
+  add('captura', 'screenshot', { name: `login_${key}_{device.name}_{timestamp}` });
+  add('fallo', 'fail', { message: '{motivo}' });
+  const L = (a, out, b) => [N[a], out, N[b]];
+  const chain = (...keys) => keys.slice(1).map((k, i) => L(keys[i], 0, k));
+  return buildGraph(nodes.map((n, i) => ({ ...n, x: (i % 8) * 215, y: Math.floor(i / 8) * 280 })), [
+    ...chain('start', ...varKeys, 'wake', 'cerrar', 'abrir', 'w1', 'h1'),
+    L('h1', 0, 'hs'), L('h1', 1, 'p1'), L('p1', 0, 'w2'), L('p1', 1, 'hs'), L('w2', 0, 'hs'),
+    L('hs', 0, 'c2'), L('hs', 1, 's0'), L('s0', 0, 'ya'), L('s0', 1, 'c2'), L('ya', 0, 'inicio'),
+    L('c2', 0, 'campoU'), L('c2', 1, 'h2'), L('h2', 0, 'c3'), L('h2', 1, 'p2'), L('p2', 0, 'w3'), L('p2', 1, 'c3'), L('w3', 0, 'c3'),
+    L('c3', 0, 'campoU'), L('c3', 1, 'h3'), L('h3', 0, 'campoU'), L('h3', 1, 'p3'), L('p3', 0, 'w4'), L('p3', 1, 'campoU'), L('w4', 0, 'campoU'),
+    L('campoU', 0, 'escU'), L('campoU', 1, 'm1'), ...chain('escU', 'w5', 'ht'),
+    L('ht', 0, 'campoC'), L('ht', 1, 'tras'), L('tras', 0, 'w6'), L('tras', 1, 'campoC'), L('w6', 0, 'campoC'),
+    L('campoC', 0, 'escC'), L('campoC', 1, 'm2'), ...chain('escC', 'w7', 'boton'),
+    L('boton', 0, 'w8'), L('boton', 1, 'enter'), L('enter', 0, 'w8'),
+    L('w8', 0, 'hr'), L('hr', 0, 'hd'), L('hr', 1, 'reto'), L('reto', 0, 'm3'), L('reto', 1, 'hd'),
+    L('hd', 0, 'hs2'), L('hd', 1, 'd1'), L('d1', 0, 'w9'), L('d1', 1, 'hs2'), L('w9', 0, 'd2'), L('d2', 0, 'hs2'), L('d2', 1, 'hs2'),
+    L('hs2', 0, 'sigue'), L('hs2', 1, 's2'), L('s2', 0, 'ok'), L('s2', 1, 'sigue'),
+    L('sigue', 0, 'm4'), L('sigue', 1, 'dudoso'), L('dudoso', 0, 'ok'), L('ok', 0, 'inicio'),
+    L('m1', 0, 'captura'), L('m2', 0, 'captura'), L('m3', 0, 'captura'), L('m4', 0, 'captura'), L('captura', 0, 'fallo'),
+  ]);
+}
+
+const codeText = (...words) => `//*[${words.map((w) => `contains(@text,"${w}")`).join(' or ')}]`;
+
+export const LOGIN_PLATFORMS = [
+  { key: 'tiktok', name: 'Iniciar sesión: TikTok', app: 'TikTok', pkg: 'com.zhiliaoapp.musically',
+    xp: { pasos: [anyText('Perfil', 'Profile'), anyText('Iniciar sesión', 'Log in'),
+      anyText('Usar teléfono/correo/nombre de usuario', 'Use phone / email / username', 'Usa el teléfono, correo electrónico o nombre de usuario')],
+    xpUsuario: '(//android.widget.EditText)[1]', xpClave: '(//android.widget.EditText)[2]', xpBoton: anyText('Iniciar sesión', 'Log in'),
+    xpSesion: anyText('Editar perfil', 'Edit profile'), xpReto: codeText('código', 'code', 'Verifica', 'Verify') } },
+  { key: 'instagram', name: 'Iniciar sesión: Instagram', app: 'Instagram', pkg: 'com.instagram.android',
+    xp: { pasos: ['', anyText('Iniciar sesión', 'Log in', 'Ya tengo una cuenta', 'I already have an account'), anyText('Iniciar sesión en otra cuenta', 'Log into another account', 'Cambiar de cuenta', 'Switch accounts')],
+      xpBoton: anyText('Iniciar sesión', 'Log in'), xpSesion: anyText('Inicio', 'Home', 'Perfil', 'Profile'),
+      xpReto: codeText('código', 'code', 'Confirma que eres tú', 'Confirm it'), xpDespues: anyText('Ahora no', 'Not now', 'Omitir', 'Skip') } },
+  { key: 'facebook', name: 'Iniciar sesión: Facebook', app: 'Facebook', pkg: 'com.facebook.katana',
+    xp: { pasos: ['', anyText('Iniciar sesión en otra cuenta', 'Log into another account', 'Usar otro perfil', 'Use another profile'), anyText('Ya tengo una cuenta', 'I already have an account', 'Iniciar sesión', 'Log in')],
+      xpBoton: anyText('Iniciar sesión', 'Log in'), xpSesion: '//*[contains(@content-desc,"Inicio, pestaña") or contains(@content-desc,"Home, tab")]',
+      xpReto: codeText('código', 'code', 'aprobación', 'approve', 'Comprueba', 'Check your'), xpDespues: anyText('Ahora no', 'Not now', 'Omitir', 'Skip', 'Guardar', 'Save') } },
+  { key: 'google', name: 'Iniciar sesión: Google (YouTube)', app: 'Google', pkg: 'com.android.settings',
+    xp: { openCmd: 'am start -a android.settings.ADD_ACCOUNT_SETTINGS --esa account_types com.google',
+      xpUsuario: '(//android.widget.EditText)[1]', xpTrasUsuario: anyText('Siguiente', 'Next'), xpClave: '//android.widget.EditText[@password="true"] | (//android.widget.EditText)[1]',
+      xpBoton: anyText('Siguiente', 'Next'), xpReto: codeText('código', 'code', 'Verifica que eres tú', 'Verify it'),
+      xpDespues: anyText('Acepto', 'I agree', 'Aceptar', 'Accept', 'Más', 'More') } },
+];
+
+function loginTemplates() {
+  return LOGIN_PLATFORMS.map((p) => ({ name: p.name, login: p.key,
+    description: `Inicia sesión en ${p.app} con {usuario} y {clave}. Para usarlo desde Cuentas.`,
+    build: () => loginFlow({ key: p.key, pkg: p.pkg, ...p.xp }) }));
+}
+
+TEMPLATES.push(...publishTemplates(), ...warmTemplates(), ...loginTemplates());
