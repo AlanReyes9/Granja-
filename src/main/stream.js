@@ -24,26 +24,37 @@ export class ScrcpyVideoParser extends EventEmitter {
   constructor() {
     super();
     this.buf = Buffer.alloc(0);
+    this.pending = []; // trozos recibidos que aún no forman un paquete completo
+    this.pendingLen = 0;
+    this.need = 1;
     this.stage = 'dummy';
   }
 
   push(chunk) {
-    this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk;
+    // Los fotogramas grandes llegan en muchos trozos: se juntan una sola vez, cuando ya está completo,
+    // en vez de copiar todo lo acumulado con cada trozo.
+    this.pending.push(chunk);
+    this.pendingLen += chunk.length;
+    if (this.buf.length + this.pendingLen < this.need) return;
+    this.buf = Buffer.concat([this.buf, ...this.pending]);
+    this.pending = [];
+    this.pendingLen = 0;
+    this.need = 0;
     for (;;) {
       if (this.stage === 'dummy') {
-        if (this.buf.length < 1) return;
+        if (this.buf.length < 1) { this.need = 1; return; }
         this.buf = this.buf.subarray(1);
         this.stage = 'meta';
       } else if (this.stage === 'meta') {
-        if (this.buf.length < 12) return;
+        if (this.buf.length < 12) { this.need = 12; return; }
         const codec = this.buf.subarray(0, 4).toString('latin1');
         this.emit('meta', { codec, width: this.buf.readUInt32BE(4), height: this.buf.readUInt32BE(8) });
         this.buf = this.buf.subarray(12);
         this.stage = 'frames';
       } else {
-        if (this.buf.length < 12) return;
+        if (this.buf.length < 12) { this.need = 12; return; }
         const size = this.buf.readUInt32BE(8);
-        if (this.buf.length < 12 + size) return;
+        if (this.buf.length < 12 + size) { this.need = 12 + size; return; }
         const hi = this.buf.readUInt32BE(0);
         const lo = this.buf.readUInt32BE(4);
         const config = (hi & 0x80000000) !== 0;
@@ -130,7 +141,10 @@ export class ScreenStreamer extends EventEmitter {
       const { maxSize, bitRate, maxFps } = st.opts;
       const args = [`CLASSPATH=${REMOTE_JAR}`, 'app_process', '/', 'com.genymobile.scrcpy.Server', SCRCPY_VERSION,
         `scid=${scid}`, 'log_level=warn', 'tunnel_forward=true', 'audio=false', 'control=false', 'cleanup=true',
-        'send_device_meta=false', `max_size=${maxSize}`, `video_bit_rate=${bitRate}`, `max_fps=${maxFps}`];
+        'send_device_meta=false', `max_size=${maxSize}`, `video_bit_rate=${bitRate}`, `max_fps=${maxFps}`,
+        // Un fotograma completo cada segundo (por defecto, cada 10): si la interfaz descarta fotogramas
+        // para no acumular retraso, se recupera en menos de un segundo en vez de quedarse congelada.
+        'video_codec_options=i-frame-interval=1'];
       st.proc = this.adb.spawnRaw(['-s', serial, 'shell', ...args]);
       let stderr = '';
       st.proc.stderr?.on('data', (d) => { stderr = (stderr + d).slice(-500); });

@@ -12,7 +12,7 @@ const NO_GROUP = '\u0000sin-grupo';
 const view = { thumb: 120, big: 680, quality: 70, fps: 1, video: true };
 // Vídeo en tiempo real (H.264): ajustes para las miniaturas y para la vista grande.
 const STREAM_THUMB = { maxSize: 480, bitRate: 1000000, maxFps: 20 };
-const STREAM_BIG = { maxSize: 1080, bitRate: 4000000, maxFps: 30 };
+const STREAM_BIG = { maxSize: 1080, bitRate: 6000000, maxFps: 60 };
 const streaming = new Map(); // serial -> 'thumb' | 'big'
 const streamFailed = new Map(); // serial -> momento del último fallo (se reintenta pasado un rato)
 let bigSerial = null;
