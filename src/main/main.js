@@ -14,6 +14,7 @@ import { ApiServer } from './api.js';
 import { Tools } from './tools.js';
 import { parseCsv, toCsv } from './csv.js';
 import { ProxyManager, parseProxyLine } from './proxies.js';
+import { Publisher, mediaInFolder, MEDIA_EXT } from './publisher.js';
 import { LicenseManager } from './licensing/license.js';
 import { ScreenStreamer } from './stream.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -65,6 +66,8 @@ const screenshotsDir = path.join(app.getPath('pictures'), 'Nexus Farmer');
 const proxies = new ProxyManager({ store, devices });
 const engine = new Engine({ devices, store, notifier, screenshotsDir, proxies });
 const scheduler = new Scheduler({ store, engine, devices, onEvent: (m) => toast(m) });
+const publisher = new Publisher({ engine, store, getSettings: () => settings(),
+  getWorkflow: (id) => (store.get('workflows') || []).find((w) => w.id === id) });
 const api = new ApiServer({ store, devices, engine, proxies });
 const health = {}; // serial -> details
 
@@ -154,6 +157,7 @@ devices.on('disconnected', (serial) => {
 });
 engine.on('runs', (runs) => emit('runs', runs));
 engine.on('log', (entry) => emit('log', entry));
+publisher.on('changed', (posts) => emit('posts', posts));
 
 // ---------- Utilidades ----------
 async function forEachSerial(serials, fn) {
@@ -177,7 +181,7 @@ const handlers = {
     try { adbVersion = await adb.version(); } catch {}
     return {
       devices: devices.list(), settings: settings(), defaults: DEFAULT_SETTINGS, workflows: store.get('workflows'), proxies: proxies.list(),
-      schedules: store.get('schedules'), deviceMeta: store.get('deviceMeta'), tables: store.get('tables').map(({ rows, ...t }) => ({ ...t, count: rows.length })),
+      schedules: store.get('schedules'), posts: publisher.list(), deviceMeta: store.get('deviceMeta'), tables: store.get('tables').map(({ rows, ...t }) => ({ ...t, count: rows.length })),
       runs: engine.listRuns(), adbVersion, adbPath: adbPath(), lastError: devices.lastError, api: api.status(), health,
       scrcpy: settings().scrcpyPath || tools.localScrcpy(), screenshotsDir, version: app.getVersion(),
     };
@@ -443,6 +447,20 @@ const handlers = {
     return engine.start(wf, serials, { concurrency: opts.concurrency ?? s.runConcurrency, staggerMs: opts.staggerMs ?? s.runStaggerMs });
   },
   stopRun: (id) => engine.stop(id),
+  // ---------- Publicaciones en lote ----------
+  posts: () => publisher.list(),
+  postCreate: (opts) => publisher.create(opts),
+  postCancel: (id) => publisher.cancel(id),
+  postRemove: (id) => publisher.remove(id),
+  postRetry: (id) => publisher.retryFailed(id),
+  pickMedia: async (folder) => {
+    if (folder) {
+      const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
+      return res.canceled ? [] : mediaInFolder(res.filePaths[0]);
+    }
+    const res = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Vídeos y fotos', extensions: MEDIA_EXT }] });
+    return res.canceled ? [] : res.filePaths;
+  },
   stopAll: () => engine.stopAll(),
   exportWorkflow: async (id) => {
     const wf = store.get('workflows').find((w) => w.id === id);
@@ -557,6 +575,7 @@ async function startServices() {
   await adb.startServer();
   devices.start();
   scheduler.start();
+  publisher.start();
   api.restart();
   healthTimer = setInterval(healthTick, 60000);
   setTimeout(healthTick, 5000);
@@ -594,6 +613,7 @@ app.whenReady().then(async () => {
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
+  publisher.stop();
   proxies.relay.stopAll().catch(() => {});
   for (const r of aiRuns.values()) r.stop();
   engine.stopAll();

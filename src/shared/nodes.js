@@ -42,6 +42,8 @@ export const NODE_TYPES = [
     params: [t('name', 'Variable', 'contador'), s('op', 'Condición', ['==', '!=', '>', '<', '>=', '<=', 'contiene']), t('value', 'Valor', '10')] },
   { type: 'log', label: 'Registrar mensaje', category: 'flow', icon: 'file-text', outputs: ['siguiente'], params: [t('message', 'Mensaje', 'Hola desde {device.name}')] },
   { type: 'stop', label: 'Fin', category: 'flow', icon: 'square', outputs: [], params: [] },
+  { type: 'fail', label: 'Fallar con mensaje', category: 'flow', icon: 'x-circle', outputs: [], params: [t('message', 'Motivo', 'No se pudo publicar')],
+    help: 'Termina el flujo en este teléfono y lo marca como error (por ejemplo, si no aparece el botón de publicar).' },
 
   // ---------- Interacción ----------
   { type: 'tap', label: 'Tocar', category: 'input', icon: 'pointer', outputs: ['siguiente'],
@@ -84,6 +86,10 @@ export const NODE_TYPES = [
   { type: 'open_url', label: 'Abrir URL', category: 'apps', icon: 'globe', outputs: ['siguiente'], params: [t('url', 'URL', 'https://example.com')] },
   { type: 'install_apk', label: 'Instalar APK', category: 'apps', icon: 'package', outputs: ['ok', 'error'], params: [t('path', 'Ruta del APK en el PC', 'C:\\apks\\app.apk')] },
   { type: 'uninstall', label: 'Desinstalar app', category: 'apps', icon: 'trash', outputs: ['siguiente'], params: [t('package', 'Paquete', 'com.ejemplo.app')] },
+  { type: 'share_media', label: 'Compartir vídeo/foto a app', category: 'apps', icon: 'upload', outputs: ['ok', 'error'],
+    params: [t('path', 'Archivo (en el PC o /sdcard/…)', '{clip}'), t('package', 'App (paquete)', 'com.zhiliaoapp.musically'),
+      s('mime', 'Tipo', ['video/*', 'image/*'])],
+    help: 'Copia el archivo a la galería del teléfono (DCIM/NexusFarmer) y lo abre con "Compartir" en la app indicada, como si lo eligieras de la galería. Guarda la ruta en el teléfono en la variable clip_telefono.' },
 
   // ---------- Sistema ----------
   { type: 'shell', label: 'Comando shell', category: 'system', icon: 'terminal', outputs: ['siguiente'],

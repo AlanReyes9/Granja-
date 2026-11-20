@@ -475,3 +475,17 @@ table.data .empty-row td { color: var(--muted); text-align: center; padding: 26p
 .ai-detail .step img { width: 100%; border-radius: 6px; min-height: 60px; background: #111; }
 .ai-detail .bug { border-left: 4px solid #e8590c; padding: 6px 10px; margin: 6px 0; background: var(--panel-2, #f8f9fa); font-size: 12px; white-space: pre-wrap; }
 @media (max-width: 1100px) { .ai-layout { grid-template-columns: 1fr; } }
+
+/* Publicaciones */
+.pb-clips { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow: auto; color: var(--text); }
+.pb-clips .clip { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 8px; }
+.pb-clips .clip span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-preview table, .pb-post table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pb-preview td, .pb-post td { padding: 3px 6px; border-top: 1px solid var(--border); vertical-align: top; }
+.pb-preview td:last-child, .pb-post td.desc { color: var(--muted); }
+.pb-post { border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pb-post .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pb-post .top .title { font-weight: 600; flex: 1; }
+.pb-post .chips .chip { text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 500; padding: 2px 8px; }
+.pb-clips .clip button { width: 22px; height: 22px; min-height: 0; padding: 0; }
+.pb-clips .clip { padding: 2px 6px; }

@@ -1,5 +1,7 @@
 // Acciones de bajo nivel sobre un dispositivo: toques humanizados, texto, UI dump, etc.
 import { shellQuote } from '../devices.js';
+import fs from 'node:fs';
+import path from 'node:path';
 import { queryXpath, bestXpath, absoluteXpath } from './xpath.js';
 
 export const sleep = (ms, signal) => new Promise((resolve, reject) => {
@@ -234,4 +236,47 @@ export function hexToRgb(hex) {
   const h = hex.replace('#', '').trim();
   const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
   return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+}
+
+const GALLERY_DIR = '/sdcard/DCIM/NexusFarmer';
+
+/**
+ * Copia un vídeo o foto a la galería del teléfono y lo abre con "Compartir" (ACTION_SEND) en la app
+ * indicada, como si se eligiera desde la galería. Devuelve la ruta en el teléfono y su content://.
+ */
+export async function shareMedia(device, { file, pkg, mime = 'video/*', signal }) {
+  if (!file) throw new Error('Falta el archivo que se va a compartir');
+  if (!/^[\w.]+$/.test(pkg || '')) throw new Error(`Paquete de app no válido: ${pkg}`);
+  let remote = file;
+  if (!/^\/(sdcard|storage)\//.test(file)) {
+    if (!fs.existsSync(file)) throw new Error(`No existe el archivo en el PC: ${file}`);
+    // Nombre seguro para el shell y para la consulta a la galería.
+    const name = path.basename(file.replace(/\\/g, '/')).replace(/[^\w.-]+/g, '_');
+    remote = `${GALLERY_DIR}/${name}`;
+    await device.shell(`mkdir -p ${GALLERY_DIR}`);
+    await device.push(file, remote);
+  }
+  const image = /^image\//.test(mime);
+  const table = image ? 'images' : 'video';
+  const tail = remote.replace(/^\/(sdcard|storage\/emulated\/\d+)/, '');
+  if (/'/.test(tail)) throw new Error('El nombre del archivo en el teléfono no puede llevar comillas');
+  await device.shell(`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d ${shellQuote(`file://${remote}`)}`).catch(() => {});
+  // La galería tarda un poco en registrar el archivo nuevo.
+  let id = null;
+  for (let i = 0; i < 12 && !id; i++) {
+    const out = await device.shell(`content query --uri content://media/external/${table}/media --projection _id --where "_data LIKE '%${tail}'"`).catch(() => '');
+    id = [...String(out).matchAll(/_id=(\d+)/g)].map((m) => Number(m[1])).sort((a, b) => b - a)[0] || null;
+    if (!id) {
+      // Android 11+ a veces ignora el aviso anterior: se pide que vuelva a mirar el almacenamiento.
+      if (i === 3) await device.shell('content call --uri content://media --method scan_volume --arg external_primary').catch(() => {});
+      await sleep(1000, signal);
+    }
+  }
+  if (!id) throw new Error('La galería del teléfono no registró el archivo (prueba a abrir la app Galería una vez)');
+  const uri = `content://media/external/${table}/media/${id}`;
+  const out = await device.shell(`am start -a android.intent.action.SEND -t ${shellQuote(mime)} --eu android.intent.extra.STREAM ${uri} --grant-read-uri-permission -p ${pkg}`);
+  if (/Error:|No Activity found|does not exist|unable to resolve/i.test(out)) {
+    throw new Error(`La app ${pkg} no aceptó el archivo (¿está instalada?): ${String(out).trim().split('\n').pop()}`);
+  }
+  return { remote, uri };
 }

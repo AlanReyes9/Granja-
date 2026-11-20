@@ -234,4 +234,82 @@ export const TEMPLATES = [
       ]);
     },
   },
+
 ];
+
+/** Texto de un botón en español o inglés (texto visible o descripción de accesibilidad). */
+const anyText = (...words) => `//*[${words.flatMap((w) => [`@text="${w}"`, `@content-desc="${w}"`]).join(' or ')}]`;
+
+/**
+ * Flujo de publicación: comparte {clip} con la app, pulsa Siguiente (una o dos veces), escribe {descripcion}
+ * y pulsa Publicar. Los XPath van en variables al principio para ajustarlos con el Inspector.
+ */
+function publishFlow({ pkg, xpAntes = '', xpSiguiente, xpDescripcion, xpPublicar }) {
+  const nodes = [];
+  const N = {};
+  const add = (key, type, params = {}) => { N[key] = nodes.length; nodes.push({ type, params }); };
+  add('start', 'start');
+  add('xa', 'set_var', { name: 'xp_antes', value: xpAntes });
+  add('xs', 'set_var', { name: 'xp_siguiente', value: xpSiguiente });
+  add('xd', 'set_var', { name: 'xp_descripcion', value: xpDescripcion });
+  add('xp', 'set_var', { name: 'xp_publicar', value: xpPublicar });
+  add('wake', 'wake_unlock');
+  add('cerrar', 'stop_app', { package: pkg });
+  add('compartir', 'share_media', { path: '{clip}', package: pkg, mime: 'video/*' });
+  add('w1', 'random_wait', { min: 5000, max: 8000 });
+  add('hayAntes', 'if_var', { name: 'xp_antes', op: '==', value: '' });
+  add('antes', 'tap_xpath', { xpath: '{xp_antes}', timeout: 10000 });
+  add('w2', 'random_wait', { min: 3000, max: 5000 });
+  add('sig1', 'tap_xpath', { xpath: '{xp_siguiente}', timeout: 20000 });
+  add('w3', 'random_wait', { min: 2500, max: 4000 });
+  add('otroSig', 'if_xpath', { xpath: '{xp_siguiente}', timeout: 3000 });
+  add('sig2', 'tap_xpath', { xpath: '{xp_siguiente}', timeout: 3000 });
+  add('w4', 'random_wait', { min: 2500, max: 4000 });
+  add('sinDesc', 'if_var', { name: 'descripcion', op: '==', value: '' });
+  add('campo', 'tap_xpath', { xpath: '{xp_descripcion}', timeout: 8000 });
+  add('escribir', 'type_text', { text: '{descripcion}', humanize: false });
+  add('w5', 'random_wait', { min: 800, max: 1500 });
+  add('teclado', 'key', { key: 'BACK' });
+  add('w6', 'random_wait', { min: 1000, max: 2000 });
+  add('noCampo', 'log', { message: '{device.name}: no encontré el campo de descripción; se publica sin ella' });
+  add('publicar', 'tap_xpath', { xpath: '{xp_publicar}', timeout: 12000 });
+  add('w7', 'random_wait', { min: 10000, max: 15000 });
+  add('ok', 'log', { message: '{device.name}: publicado {clip_nombre}' });
+  add('inicio', 'key', { key: 'HOME' });
+  add('captura', 'screenshot', { name: 'fallo_publicar_{device.name}_{timestamp}' });
+  add('fallo', 'fail', { message: 'No se pudo publicar {clip_nombre} en {device.name} (mira la captura y ajusta los XPath)' });
+  const L = (a, out, b) => [N[a], out, N[b]];
+  const chain = (...keys) => keys.slice(1).map((k, i) => L(keys[i], 0, k));
+  return buildGraph(nodes.map((n, i) => ({ ...n, x: (i % 7) * 215, y: Math.floor(i / 7) * 280 })), [
+    ...chain('start', 'xa', 'xs', 'xd', 'xp', 'wake', 'cerrar', 'compartir', 'w1', 'hayAntes'),
+    L('compartir', 1, 'captura'),
+    L('hayAntes', 0, 'sig1'), L('hayAntes', 1, 'antes'), L('antes', 0, 'w2'), L('antes', 1, 'sig1'), L('w2', 0, 'sig1'),
+    L('sig1', 0, 'w3'), L('sig1', 1, 'captura'), L('w3', 0, 'otroSig'),
+    L('otroSig', 0, 'sig2'), L('otroSig', 1, 'sinDesc'), L('sig2', 0, 'w4'), L('sig2', 1, 'sinDesc'), L('w4', 0, 'sinDesc'),
+    L('sinDesc', 0, 'publicar'), L('sinDesc', 1, 'campo'),
+    L('campo', 0, 'escribir'), L('campo', 1, 'noCampo'), L('noCampo', 0, 'publicar'),
+    ...chain('escribir', 'w5', 'teclado', 'w6', 'publicar'),
+    L('publicar', 0, 'w7'), L('publicar', 1, 'captura'), ...chain('w7', 'ok', 'inicio'),
+    L('captura', 0, 'fallo'),
+  ]);
+}
+
+export const PUBLISH_PLATFORMS = [
+  { key: 'tiktok', name: 'Publicar clip: TikTok', pkg: 'com.zhiliaoapp.musically',
+    description: 'Comparte {clip} con TikTok, pulsa Siguiente, escribe {descripcion} y pulsa Publicar. Para usarlo desde Publicaciones.',
+    xp: { xpSiguiente: anyText('Siguiente', 'Next'), xpDescripcion: '(//android.widget.EditText)[1]', xpPublicar: anyText('Publicar', 'Post') } },
+  { key: 'shorts', name: 'Publicar clip: YouTube Shorts', pkg: 'com.google.android.youtube',
+    description: 'Comparte {clip} con YouTube (vídeo vertical corto = Short), pulsa Siguiente, pone {descripcion} como título y pulsa Subir.',
+    xp: { xpSiguiente: anyText('Siguiente', 'Next'), xpDescripcion: '(//android.widget.EditText)[1]',
+      xpPublicar: anyText('Subir', 'Upload', 'Subir Short', 'Upload Short', 'Publicar', 'Post') } },
+  { key: 'reels', name: 'Publicar clip: Instagram Reels', pkg: 'com.instagram.android',
+    description: 'Comparte {clip} con Instagram, elige Reels, pulsa Siguiente, escribe {descripcion} y pulsa Compartir.',
+    xp: { xpAntes: anyText('Reels', 'Reel'), xpSiguiente: anyText('Siguiente', 'Next'), xpDescripcion: '(//android.widget.EditText)[1]',
+      xpPublicar: anyText('Compartir', 'Share') } },
+];
+
+function publishTemplates() {
+  return PUBLISH_PLATFORMS.map((p) => ({ name: p.name, description: p.description, publish: p.key, build: () => publishFlow({ pkg: p.pkg, ...p.xp }) }));
+}
+
+TEMPLATES.push(...publishTemplates());

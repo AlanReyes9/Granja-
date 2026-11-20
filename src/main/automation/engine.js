@@ -56,7 +56,8 @@ export class Engine extends EventEmitter {
   }
 
   /** Lanza un flujo. Devuelve el id de la ejecución. */
-  start(workflow, serials, { concurrency = 10, staggerMs = 0, source = 'manual' } = {}) {
+  /** varsBySerial: variables propias de cada teléfono (p. ej. qué clip y qué descripción publica). */
+  start(workflow, serials, { concurrency = 10, staggerMs = 0, source = 'manual', varsBySerial = {} } = {}) {
     const graph = compileDrawflow(workflow.graph);
     if (!graph.startIds.length) throw new Error('El flujo necesita un nodo "Inicio"');
     if (graph.startIds.every((id) => !graph.nodes[id].next.flat().length)) {
@@ -67,7 +68,7 @@ export class Engine extends EventEmitter {
     const controller = new AbortController();
     const run = {
       id, workflowId: workflow.id, workflowName: workflow.name, startedAt: Date.now(), finishedAt: null, status: 'running', source,
-      controller, devices: Object.fromEntries(serials.map((s) => [s, { status: 'en cola', step: '' }])),
+      controller, varsBySerial, devices: Object.fromEntries(serials.map((s) => [s, { status: 'en cola', step: '' }])),
     };
     this.runs.set(id, run);
     this.emit('runs', this.listRuns());
@@ -126,6 +127,7 @@ export class Engine extends EventEmitter {
     const vars = {
       'device.serial': serial, 'device.name': meta.name || serial, 'device.group': meta.group || '',
       'device.index': index, 'device.proxy': meta.proxy || '', 'run.id': run.id,
+      ...(run.varsBySerial?.[serial] || {}),
     };
     const loopCounters = {};
     state.status = 'ejecutando';
@@ -189,6 +191,7 @@ export class Engine extends EventEmitter {
     switch (node.type) {
       case 'start': return 0;
       case 'stop': return null;
+      case 'fail': throw new Error(p.message || 'Marcado como fallido');
       case 'wait': await A.sleep(num(p.ms, 1000), signal); return 0;
       case 'random_wait': await A.sleep(A.randInt(num(p.min, 500), Math.max(num(p.min, 500), num(p.max, 1500))), signal); return 0;
       case 'loop': {
@@ -307,6 +310,18 @@ export class Engine extends EventEmitter {
         } catch (e) { log(`Error instalando: ${e.message}`, 'error'); return 1; }
       }
       case 'uninstall': await device.shell(`pm uninstall ${p.package}`).catch(() => {}); return 0;
+      case 'share_media': {
+        try {
+          const r = await A.shareMedia(device, { file: p.path, pkg: p.package, mime: p.mime, signal });
+          vars.clip_telefono = r.remote;
+          log(`Compartido con ${p.package}: ${r.remote}`);
+          return 0;
+        } catch (e) {
+          if (signal.aborted) throw e;
+          log(e.message, 'error');
+          return 1;
+        }
+      }
 
       case 'shell': {
         const out = await device.shell(p.command);
