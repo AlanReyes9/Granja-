@@ -1,4 +1,4 @@
-name: Compilar .exe para Windows
+name: Compilar Windows y Mac
 
 on:
   push:
@@ -77,8 +77,51 @@ jobs:
           name: Nexus Farmer - última versión
           body: |
             Compilación automática de `${{ github.sha }}`.
-            - **NexusFarmer-Setup-1.0.0.exe**: instalador.
-            - **NexusFarmer-Portable-1.0.0.exe**: se abre sin instalar.
+            - **NexusFarmer-Setup-1.0.0.exe**: instalador para Windows.
+            - **NexusFarmer-Portable-1.0.0.exe**: Windows, se abre sin instalar.
+            - **NexusFarmer-Mac-Intel-1.0.0.dmg**: Mac con procesador Intel (arrástrala a Aplicaciones).
+            - **NexusFarmer-Mac-Intel-1.0.0.zip**: Mac con procesador Intel, sin instalador.
+            La primera vez en Mac: clic derecho en la app > Abrir (no está firmada por Apple).
           make_latest: true
           overwrite_files: true
           files: dist/*.exe
+
+  # Mac con procesador Intel (x64). Se compila en un Mac Intel de GitHub y se sube a la misma release.
+  mac:
+    runs-on: macos-15-intel
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Empaquetar .dmg y .zip (sin firmar)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NexusFarmer-mac-intel
+          path: |
+            dist/NexusFarmer-Mac-Intel-*.dmg
+            dist/NexusFarmer-Mac-Intel-*.zip
+          if-no-files-found: error
+      - name: Publicar release (solo en tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/NexusFarmer-Mac-Intel-*.dmg
+            dist/NexusFarmer-Mac-Intel-*.zip
+      - name: Añadir a la release "ultima"
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ultima
+          overwrite_files: true
+          files: |
+            dist/NexusFarmer-Mac-Intel-*.dmg
+            dist/NexusFarmer-Mac-Intel-*.zip

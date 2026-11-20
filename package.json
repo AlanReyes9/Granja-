@@ -74,6 +74,32 @@
     "portable": {
       "artifactName": "NexusFarmer-Portable-${version}.${ext}"
     },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "NexusFarmer-Mac-Intel-${version}.${ext}"
+    },
+    "dmg": {
+      "title": "Nexus Farmer",
+      "artifactName": "NexusFarmer-Mac-Intel-${version}.${ext}"
+    },
     "electronFuses": {
       "runAsNode": false,
       "enableNodeOptionsEnvironmentVariable": false,
